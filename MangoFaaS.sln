@@ -1,0 +1,46 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.AppHost", "src\MangoFaaS.AppHost\MangoFaaS.AppHost.csproj", "{B3B9CDCD-384A-480D-8BC7-0A2FDF55EF75}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.ServiceDefaults", "src\MangoFaaS.ServiceDefaults\MangoFaaS.ServiceDefaults.csproj", "{E00BB469-C96E-4137-8525-FFE662291624}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Gateway", "src\MangoFaaS.Gateway\MangoFaaS.Gateway.csproj", "{C87B7A50-1794-40C9-BF85-6FCD08105382}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Models", "src\MangoFaaS.Models\MangoFaaS.Models.csproj", "{5F1F6960-81A6-47B8-BB29-3220678EE24E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Firecracker.API", "src\MangoFaaS.Firecracker.API\MangoFaaS.Firecracker.API.csproj", "{71B52B1D-252B-41CC-971C-9D3428FA66A4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Firecracker.Node", "src\MangoFaaS.Firecracker.Node\MangoFaaS.Firecracker.Node.csproj", "{DEB2446F-E449-449C-900C-A6E9CA07A5AD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B3B9CDCD-384A-480D-8BC7-0A2FDF55EF75}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B3B9CDCD-384A-480D-8BC7-0A2FDF55EF75}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B3B9CDCD-384A-480D-8BC7-0A2FDF55EF75}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B3B9CDCD-384A-480D-8BC7-0A2FDF55EF75}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E00BB469-C96E-4137-8525-FFE662291624}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E00BB469-C96E-4137-8525-FFE662291624}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E00BB469-C96E-4137-8525-FFE662291624}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E00BB469-C96E-4137-8525-FFE662291624}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C87B7A50-1794-40C9-BF85-6FCD08105382}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C87B7A50-1794-40C9-BF85-6FCD08105382}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C87B7A50-1794-40C9-BF85-6FCD08105382}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C87B7A50-1794-40C9-BF85-6FCD08105382}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F1F6960-81A6-47B8-BB29-3220678EE24E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F1F6960-81A6-47B8-BB29-3220678EE24E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F1F6960-81A6-47B8-BB29-3220678EE24E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F1F6960-81A6-47B8-BB29-3220678EE24E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{71B52B1D-252B-41CC-971C-9D3428FA66A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{71B52B1D-252B-41CC-971C-9D3428FA66A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{71B52B1D-252B-41CC-971C-9D3428FA66A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{71B52B1D-252B-41CC-971C-9D3428FA66A4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DEB2446F-E449-449C-900C-A6E9CA07A5AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DEB2446F-E449-449C-900C-A6E9CA07A5AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DEB2446F-E449-449C-900C-A6E9CA07A5AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DEB2446F-E449-449C-900C-A6E9CA07A5AD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

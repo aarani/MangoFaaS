@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <Sdk Name="Aspire.AppHost.Sdk" Version="9.4.1" />
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <UserSecretsId>a7df2c79-9365-4490-a691-0a3cba9f2d79</UserSecretsId>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Aspire.Hosting.AppHost" Version="9.4.1" />
+        <PackageReference Include="Aspire.Hosting.Kafka" Version="9.4.1" />
+        <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="9.4.1" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.8" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.8">
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+          <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\MangoFaaS.Firecracker.Node\MangoFaaS.Firecracker.Node.csproj" />
+      <ProjectReference Include="..\MangoFaaS.Gateway\MangoFaaS.Gateway.csproj" IsAspireProjectResource="false" />
+        <ProjectReference Include="..\MangoFaaS.Gateway\MangoFaaS.Gateway.csproj" IsAspireProjectResource="true" />
+    </ItemGroup>
+
+</Project>
