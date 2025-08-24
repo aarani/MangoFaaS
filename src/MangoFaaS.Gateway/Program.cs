@@ -110,7 +110,13 @@ public static class Program
         {
             await enricher.EnrichAsync(request);
         }
-        
+
+        if (string.IsNullOrWhiteSpace(request.FunctionId) || string.IsNullOrWhiteSpace(request.FunctionVersion))
+        {
+            context.Response.StatusCode = 404;
+            return;
+        }
+
         await producer.ProduceAsync("requests", new Message<string, MangoHttpRequest>
         {
             Key = "request",

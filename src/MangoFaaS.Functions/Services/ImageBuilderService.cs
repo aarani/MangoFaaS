@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using MangoFaaS.Functions.Models;
+using Medallion.Threading.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Minio;
 using Minio.DataModel;
@@ -10,7 +11,7 @@ using Polly;
 
 namespace MangoFaaS.Functions.Services;
 
-public class ImageBuilderService(ILogger<ImageBuilderService> logger, IServiceProvider serviceProvider) : BackgroundService
+public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfiguration configuration, IServiceProvider serviceProvider) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -28,7 +29,12 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IServicePr
             ))
             {
                 logger.LogInformation("Processing raw function: {FunctionKey}", rawFunc.Key);
-                await ConvertAndStoreFunctionImage(rawFunc, stoppingToken);
+                var connectionString = configuration.GetConnectionString("functionsdb") ?? throw new InvalidOperationException("Connection string 'functionsdb' not found.");
+                var @lock = new PostgresDistributedLock(new PostgresAdvisoryLockKey(rawFunc.Key, allowHashing: true), connectionString);
+                await using (await @lock.AcquireAsync(cancellationToken: stoppingToken))
+                {   
+                    await ConvertAndStoreFunctionImage(rawFunc, stoppingToken);
+                }
             }
         }
     }
@@ -42,7 +48,9 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IServicePr
         var funcKeyWithoutZip =
             rawFunc.Key.Replace(".zip", "");
 
-        var versionId = Path.GetFileNameWithoutExtension(rawFunc.Key);
+        var funcKeyWithoutZipParts = funcKeyWithoutZip.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var functionId = Guid.Parse(funcKeyWithoutZipParts[0]);
+        var versionId = Guid.Parse(funcKeyWithoutZipParts[1]);
 
         var rawFuncZipFilePath = Path.GetTempFileName();
         var resultOverlayFile = Path.GetTempFileName();
@@ -51,7 +59,6 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IServicePr
 
         try
         {
-
             var function = await minioClient.GetObjectAsync(new GetObjectArgs()
                 .WithBucket("raw-functions")
                 .WithObject(rawFunc.Key)
@@ -59,12 +66,16 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IServicePr
                 stoppingToken
             );
 
+            var version = await dbContext.FunctionVersions.FindAsync([versionId], cancellationToken: cts.Token) ??
+                throw new InvalidOperationException("Function version not found in DB, cannot proceed!");
+
             await RunProcess("dd", $"if=/dev/zero of={resultOverlayFile} bs=1M count=2048", cts.Token);
             await RunProcess("mkfs.ext4", $"{resultOverlayFile}", cts.Token);
             Directory.CreateDirectory($"/mnt/{versionId}");
-            await RunProcess("mount", $"-o loop {resultOverlayFile} /mnt/{versionId}", cts.Token);
-            Directory.CreateDirectory($"/mnt/{versionId}/overlay/root/app");
-            ZipFile.ExtractToDirectory(rawFuncZipFilePath, $"/mnt/{versionId}/overlay/root/app/", true);
+            await RunProcess("mount", $"-o loop,sync {resultOverlayFile} /mnt/{versionId}", cts.Token);
+            Directory.CreateDirectory($"/mnt/{versionId}/root/app");
+            ZipFile.ExtractToDirectory(rawFuncZipFilePath, $"/mnt/{versionId}/root/app/", true);
+            await File.WriteAllTextAsync($"/mnt/{versionId}/root/entrypoint.txt", version.Entrypoint, stoppingToken);
             await RunProcess("umount", $"/mnt/{versionId}", cts.Token);
 
             ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
@@ -89,14 +100,14 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IServicePr
 
             await dbContext
                 .FunctionVersions
-                .Where(x => x.Id == Guid.Parse(versionId))
+                .Where(x => x.Id == versionId)
                 .ExecuteUpdateAsync(s => s.SetProperty(v => v.State, v => FunctionState.Deployed), stoppingToken);
         }
         catch (Exception ex)
         {
             await dbContext
                 .FunctionVersions
-                .Where(x => x.Id == Guid.Parse(versionId))
+                .Where(x => x.Id == versionId)
                 .ExecuteUpdateAsync(s => s.SetProperty(v => v.State, v => FunctionState.Failed), stoppingToken);
 
             await minioClient.RemoveObjectAsync(new RemoveObjectArgs()

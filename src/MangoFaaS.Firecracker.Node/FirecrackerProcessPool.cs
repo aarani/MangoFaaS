@@ -18,14 +18,34 @@ public sealed class FirecrackerLease : IAsyncDisposable
     private readonly FirecrackerProcessPool _pool;
     internal readonly FirecrackerProcessHandle Handle;
 
-    internal FirecrackerLease(FirecrackerProcessPool pool, FirecrackerProcessHandle handle)
+    internal FirecrackerLease(FirecrackerProcessPool pool, FirecrackerProcessHandle handle, bool isWarm)
     {
         _pool = pool;
         Handle = handle;
+        IsWarm = isWarm;
     }
 
     public Process Process => Handle.Process;
     public string ApiSocketPath => Handle.ApiSocketPath;
+    public bool IsWarm { get; private set; }
+    public FirecrackerClient CreateClient() => Handle.CreateClient();
+    public async ValueTask DisposeAsync()
+    {
+        await _pool.Release(Handle);
+    }
+    public async Task MarkAsUnusable(){
+        await _pool.Release(Handle, true);
+    }
+}
+
+internal sealed class FirecrackerProcessHandle
+{
+    public required string Id { get; init; }
+    public required Process Process { get; init; }
+    public required string ApiSocketPath { get; init; }
+    public DateTimeOffset LastUsed { get; set; } = DateTimeOffset.UtcNow;
+    public string LastFunctionHash { get; set; } = string.Empty;
+    public volatile bool InUse;
 
     public FirecrackerClient CreateClient()
     {
@@ -63,21 +83,6 @@ public sealed class FirecrackerLease : IAsyncDisposable
 
         return client;
     }
-
-    public async ValueTask DisposeAsync()
-    {
-        await _pool.Release(Handle);
-    }
-}
-
-internal sealed class FirecrackerProcessHandle
-{
-    public required string Id { get; init; }
-    public required Process Process { get; init; }
-    public required string ApiSocketPath { get; init; }
-    public DateTimeOffset LastUsed { get; set; } = DateTimeOffset.UtcNow;
-    public string LastFunctionHash { get; set; } = string.Empty;
-    public volatile bool InUse;
 }
 
 //FIXME: InUse is not thread-safe; consider using locks if needed
@@ -100,7 +105,7 @@ public sealed class FirecrackerProcessPool(
             var newHandle = await StartNewAsync(cancellationToken).ConfigureAwait(false);
             newHandle.InUse = true;
             newHandle.LastUsed = DateTimeOffset.UtcNow;
-            return new FirecrackerLease(this, newHandle);
+            return new FirecrackerLease(this, newHandle, false);
         }
 
         // Fast path: reuse an idle process
@@ -113,7 +118,7 @@ public sealed class FirecrackerProcessPool(
                 {
                     handle.InUse = true;
                     handle.LastUsed = DateTimeOffset.UtcNow;
-                    return new FirecrackerLease(this, handle);
+                    return new FirecrackerLease(this, handle, true);
                 }
                 // Drop unhealthy/exited; continue loop
                 await RemoveHandle(handle);
@@ -127,7 +132,8 @@ public sealed class FirecrackerProcessPool(
                 {
                     genericHandle.InUse = true;
                     genericHandle.LastUsed = DateTimeOffset.UtcNow;
-                    return new FirecrackerLease(this, genericHandle);
+                    genericHandle.LastFunctionHash = functionHash;
+                    return new FirecrackerLease(this, genericHandle, false);
                 }
                 // Drop unhealthy/exited; continue loop
                 await RemoveHandle(genericHandle);
@@ -138,13 +144,14 @@ public sealed class FirecrackerProcessPool(
             var newHandle = await StartNewAsync(cancellationToken).ConfigureAwait(false);
             newHandle.InUse = true;
             newHandle.LastUsed = DateTimeOffset.UtcNow;
-            return new FirecrackerLease(this, newHandle);
+            newHandle.LastFunctionHash = functionHash;
+            return new FirecrackerLease(this, newHandle, false);
         }
     }
 
-    internal async Task Release(FirecrackerProcessHandle handle)
+    internal async Task Release(FirecrackerProcessHandle handle, bool kill = false)
     {
-        if (!IsHealthy(handle))
+        if (kill || !IsHealthy(handle))
         {
             await RemoveHandle(handle);
             return;
@@ -293,8 +300,19 @@ public sealed class FirecrackerProcessPool(
             InUse = false
         };
 
+        var client = handle.CreateClient();
+        var logPath = Path.Combine(workDir, $"fc-{id}.log");
+        await File.Create(logPath).DisposeAsync();
+        await client.Logger.PutAsync(new API.Models.Logger
+        {
+            LogPath = logPath,
+            Level = API.Models.Logger_level.Debug,
+            ShowLevel = true,
+            ShowLogOrigin = true
+        });
+
         _all[handle.Id] = handle;
-        logger.LogInformation("Started firecracker process {Id} (PID {Pid}) with API socket {Sock}", handle.Id, p.Id, apiSock);
+        logger.LogInformation("Started firecracker process {Id} (PID {Pid}) with API socket {Sock} and Log path {LogPath}", handle.Id, p.Id, apiSock, logPath);
         return handle;
     }
 

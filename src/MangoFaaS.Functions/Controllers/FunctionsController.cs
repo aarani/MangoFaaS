@@ -1,5 +1,6 @@
 using MangoFaaS.Functions.Dto;
 using MangoFaaS.Functions.Models;
+using MangoFaaS.Models;
 using Microsoft.AspNetCore.Mvc;
 using Minio;
 
@@ -45,6 +46,10 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
     {
         var versionId = Guid.NewGuid();
 
+        var function = await dbContext.Functions.FindAsync(request.FunctionId);
+
+        if (function is null) return NotFound();
+
         var version = new FunctionVersion()
         {
             Id = versionId,
@@ -55,8 +60,31 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
             FilePath = $"{request.FunctionId}/{versionId}"
         };
 
+        var functionManifest = new MangoFunctionManifest
+        {
+            FunctionId = request.FunctionId,
+            VersionId = versionId,
+            RuntimeImage = function.Runtime switch //TODO: will be moved to database
+            {
+                "dotnet" => Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                "python" => Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                _ => throw new InvalidOperationException("Unsupported runtime")
+            }
+        };
+
+        using var memStream = new MemoryStream(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(functionManifest));
+
         dbContext.FunctionVersions.Add(version);
         await dbContext.SaveChangesAsync();
+
+        await minioClient.PutObjectAsync(
+            new Minio.DataModel.Args.PutObjectArgs()
+                .WithBucket("function-manifests")
+                .WithObject($"{request.FunctionId}/{versionId}.json")
+                .WithStreamData(memStream)
+                .WithObjectSize(memStream.Length)
+                .WithContentType("application/json")
+        );
 
         var response = new CreateFunctionVersionResponse
         {

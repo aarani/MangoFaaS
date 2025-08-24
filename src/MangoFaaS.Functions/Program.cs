@@ -5,6 +5,7 @@ using Minio;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddServiceDefaults();
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
 
@@ -40,8 +41,10 @@ using (var scope = app.Services.CreateScope())
         }
     }
 
+    await CreateBucketIfDoesNotExist("runtimes");
     await CreateBucketIfDoesNotExist("raw-functions");
     await CreateBucketIfDoesNotExist("functions");
+    await CreateBucketIfDoesNotExist("function-manifests");
 }
 
 app.UseHttpsRedirection();

@@ -6,6 +6,8 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
 
+builder.AddMinioClient("minio");
+
 builder.AddKafkaConsumer<string, MangoHttpRequest>("kafka", settings  =>
 {
     settings.Config.GroupId = "firecracker-node";

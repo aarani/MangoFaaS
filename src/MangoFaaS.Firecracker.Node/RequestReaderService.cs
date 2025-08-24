@@ -1,14 +1,17 @@
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using Confluent.Kafka;
 using MangoFaaS.Firecracker.API;
 using MangoFaaS.Models;
+using Microsoft.Extensions.Options;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Kiota.Http.HttpClientLibrary;
+using Minio;
 
 namespace MangoFaaS.Firecracker.Node;
 
-public class RequestReaderService(ILogger<RequestReaderService> logger, IConsumer<string, MangoHttpRequest> consumer, IFirecrackerProcessPool pool): BackgroundService
+public class RequestReaderService(ILogger<RequestReaderService> logger, IOptions<FirecrackerPoolOptions> firecrackerOptions, IConsumer<string, MangoHttpRequest> consumer, IMinioClient minioClient, IFirecrackerProcessPool pool): BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -20,9 +23,10 @@ public class RequestReaderService(ILogger<RequestReaderService> logger, IConsume
             {
                 while (!stoppingToken.IsCancellationRequested)
                 {
+                    ConsumeResult<string, MangoHttpRequest>? cr = null;
                     try
                     {
-                        var cr = consumer.Consume(stoppingToken);
+                        cr = consumer.Consume(stoppingToken);
                         if (cr?.Message == null) continue;
 
                         var correlationId = GetHeader(cr.Message.Headers, "correlationId");
@@ -30,9 +34,6 @@ public class RequestReaderService(ILogger<RequestReaderService> logger, IConsume
 
                         // Process the request (cr.Message.Value)
                         await HandleRequestAsync(cr.Message.Value, correlationId, pool, stoppingToken);
-
-                        // Manually commit the offset after processing
-                        consumer.Commit(cr);
                     }
                     catch (OperationCanceledException)
                     {
@@ -42,6 +43,14 @@ public class RequestReaderService(ILogger<RequestReaderService> logger, IConsume
                     {
                         // Log exception
                         Console.WriteLine($"Error consuming message: {ex}");
+                    }
+                    finally
+                    {
+                        // Manually commit the offset after processing
+                        if (cr is not null)
+                            consumer.Commit(cr);
+
+                        cr = null;
                     }
                 }
 
@@ -59,14 +68,117 @@ public class RequestReaderService(ILogger<RequestReaderService> logger, IConsume
         await using var lease = await pool.AcquireAsync(request.FunctionId ?? throw new InvalidOperationException("Non-enriched request received at Node"), ct);
         var p = lease.Process;
 
-        var client = lease.CreateClient();
+        // We can short-circuit the initalization if VM is already initialized for this function
+        if (!lease.IsWarm)
+        {
+            var client = lease.CreateClient();
 
-        logger.LogInformation("Sending request to Firecracker API socket at {SocketPath}", lease.ApiSocketPath);
-        logger.LogInformation($"[{DateTimeOffset.UtcNow:o}] Handling {correlationId} using firecracker PID {p.Id}");
-        logger.LogInformation("{}", (await client.Version.GetAsync(cancellationToken: ct))?.FirecrackerVersionProp);
+            logger.LogInformation("Sending request to Firecracker API socket at {SocketPath}", lease.ApiSocketPath);
+            logger.LogInformation($"[{DateTimeOffset.UtcNow:o}] Handling {correlationId} using firecracker PID {p.Id}");
+            logger.LogInformation("{}", (await client.Version.GetAsync(cancellationToken: ct))?.FirecrackerVersionProp);
+            try {
+                await ConfigureKernelAsync(client, lease, ct);
+                await ConfigureDiskAsync(client, request, lease, ct);
+                await Task.Delay(TimeSpan.FromSeconds(0.5), ct);
+                await StartVm(client, request, lease, ct);
+                //TODO: setup network and vsock
+            }
+            catch (Exception) {
+                await lease.MarkAsUnusable();
+                throw;
+            }
+        }
 
+        //TODO: give request to VM
+    }
 
+    private async Task StartVm(FirecrackerClient client, MangoHttpRequest request, FirecrackerLease lease, CancellationToken ct)
+    {
+        await client.Actions.PutAsync(new API.Models.InstanceActionInfo
+        {
+            ActionType = API.Models.InstanceActionInfo_action_type.InstanceStart
+        }, cancellationToken: ct);
+    }
+
+    private async Task ConfigureDiskAsync(FirecrackerClient client, MangoHttpRequest request, FirecrackerLease lease, CancellationToken ct)
+    {
+        var rootfsPath =
+            firecrackerOptions.Value.WorkingDirectory switch
+            {
+                null => Path.GetTempFileName(),
+                _ => Path.Combine(firecrackerOptions.Value.WorkingDirectory, Path.GetRandomFileName())
+            };
+        var overlayfsPath =
+            firecrackerOptions.Value.WorkingDirectory switch
+            {
+                null => Path.GetTempFileName(),
+                _ => Path.Combine(firecrackerOptions.Value.WorkingDirectory, Path.GetRandomFileName())
+            };
         
+        async Task FindAndDownloadRootfs()
+        {
+            //FIXME: read directly to string without file in the middle
+            var manifestPath = Path.GetTempFileName();
+            await minioClient.GetObjectAsync(new Minio.DataModel.Args.GetObjectArgs()
+                .WithBucket("function-manifests")
+                .WithObject($"{request.FunctionId}/{request.FunctionVersion}.json")
+                .WithFile(manifestPath), ct);
+
+            var manifestString = await File.ReadAllTextAsync(manifestPath, ct);
+            MangoFunctionManifest mangoFunctionManifest = JsonSerializer.Deserialize<MangoFunctionManifest>(manifestString)
+                ?? throw new InvalidOperationException("Failed to deserialize function manifest");
+
+            await minioClient.GetObjectAsync(new Minio.DataModel.Args.GetObjectArgs()
+                .WithBucket("runtimes")
+                .WithObject($"{mangoFunctionManifest.RuntimeImage}.ext4")
+                .WithFile(rootfsPath), ct);
+        }
+
+        var overlayDownloadTask = minioClient.GetObjectAsync(new Minio.DataModel.Args.GetObjectArgs()
+            .WithBucket("functions")
+            .WithObject($"{request.FunctionId}/{request.FunctionVersion}.ext4")
+            .WithFile(overlayfsPath), ct);
+
+        await Task.WhenAll(FindAndDownloadRootfs(), overlayDownloadTask);
+
+        await client.Drives["rootfs"].PutAsync(new API.Models.Drive
+        {
+            DriveId = "rootfs",
+            PathOnHost = rootfsPath,
+            IsReadOnly = true,
+            IsRootDevice = true
+        }, cancellationToken: ct);
+
+        await client.Drives["overlayfs"].PutAsync(new API.Models.Drive
+        {
+            DriveId = "overlayfs",
+            PathOnHost = overlayfsPath,
+            IsReadOnly = false,
+            IsRootDevice = false
+        }, cancellationToken: ct);
+    }
+
+    private async Task ConfigureKernelAsync(FirecrackerClient client, FirecrackerLease lease, CancellationToken ct)
+    {
+        //TODO: dedupe this piece of code
+        var kernelPath =
+            firecrackerOptions.Value.WorkingDirectory switch
+            {
+                null => Path.GetTempFileName(),
+                _ => Path.Combine(firecrackerOptions.Value.WorkingDirectory, Path.GetRandomFileName())
+            };
+
+        await minioClient.GetObjectAsync(new Minio.DataModel.Args.GetObjectArgs()
+            .WithBucket("runtimes")
+            .WithObject("00000000-0000-0000-0000-000000000000.vmlinux")
+            .WithFile(kernelPath), ct);
+
+        // Configure the kernel for the Firecracker VM
+        await client.BootSource.PutAsync(new API.Models.BootSource
+        {
+            BootArgs = "console=ttyS0 reboot=k panic=1 pci=off init=/sbin/overlay-init overlay_root=/vdb",
+            KernelImagePath = kernelPath
+        }, cancellationToken: ct);
     }
     
     private static string? GetHeader(Headers headers, string name)
