@@ -1,5 +1,6 @@
 using Confluent.Kafka;
 using MangoFaaS.Firecracker.Node;
+using MangoFaaS.IPAM;
 using MangoFaaS.Models;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -26,8 +27,14 @@ builder.Services.AddSingleton<FirecrackerProcessPool>();
 builder.Services.AddSingleton<IFirecrackerProcessPool>(sp => sp.GetRequiredService<FirecrackerProcessPool>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<FirecrackerProcessPool>());
 
+builder.Services.AddIpPoolManager();
+
 builder.Services.AddHostedService<RequestReaderService>();
 
 var host = builder.Build();
+
+var ipPool = host.Services.GetRequiredService<IIpPoolManager>();
+ipPool.AddPool("pool", "172.16.0.0/16");
+ipPool.SplitIntoSubPools("pool", 30, false);
 
 await host.RunAsync();

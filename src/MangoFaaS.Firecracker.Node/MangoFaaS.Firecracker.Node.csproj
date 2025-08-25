@@ -24,5 +24,6 @@
       <ProjectReference Include="..\MangoFaaS.Firecracker.API\MangoFaaS.Firecracker.API.csproj" />
       <ProjectReference Include="..\MangoFaaS.Models\MangoFaaS.Models.csproj" />
       <ProjectReference Include="..\MangoFaaS.ServiceDefaults\MangoFaaS.ServiceDefaults.csproj" />
+      <ProjectReference Include="..\MangoFaaS.IPAM\MangoFaaS.IPAM.csproj" />
     </ItemGroup>
 </Project>
