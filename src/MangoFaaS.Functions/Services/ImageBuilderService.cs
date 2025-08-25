@@ -1,5 +1,6 @@
 
 using System.Diagnostics;
+using System.Formats.Tar;
 using System.IO.Compression;
 using MangoFaaS.Functions.Models;
 using Medallion.Threading.Postgres;
@@ -54,6 +55,7 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
 
         var rawFuncZipFilePath = Path.GetTempFileName();
         var resultOverlayFile = Path.GetTempFileName();
+        var tarResultFile = Path.GetTempFileName();
 
         CancellationTokenSource cts = new(TimeSpan.FromMinutes(10));
 
@@ -69,13 +71,13 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
             var version = await dbContext.FunctionVersions.FindAsync([versionId], cancellationToken: cts.Token) ??
                 throw new InvalidOperationException("Function version not found in DB, cannot proceed!");
 
-            await RunProcess("dd", $"if=/dev/zero of={resultOverlayFile} bs=1M count=2048", cts.Token);
+            await RunProcess("dd", $"if=/dev/zero of={resultOverlayFile} conv=sparse bs=1M count=2048", cts.Token);
             await RunProcess("mkfs.ext4", $"{resultOverlayFile}", cts.Token);
             Directory.CreateDirectory($"/mnt/{versionId}");
             await RunProcess("mount", $"-o loop,sync {resultOverlayFile} /mnt/{versionId}", cts.Token);
             Directory.CreateDirectory($"/mnt/{versionId}/root/app");
             ZipFile.ExtractToDirectory(rawFuncZipFilePath, $"/mnt/{versionId}/root/app/", true);
-            await File.WriteAllTextAsync($"/mnt/{versionId}/root/entrypoint.txt", version.Entrypoint, stoppingToken);
+            await File.WriteAllTextAsync($"/mnt/{versionId}/root/entrypoint.txt", version.Entrypoint, cts.Token);
             await RunProcess("umount", $"/mnt/{versionId}", cts.Token);
 
             ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
@@ -84,11 +86,13 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
 
             pipeline.Execute(_ => Directory.Delete($"/mnt/{versionId}", true), CancellationToken.None);
 
+            await RunProcess("tar", $"-cSvf {tarResultFile} {resultOverlayFile}", CancellationToken.None);
+
             _ = await minioClient.PutObjectAsync(new PutObjectArgs()
                 .WithBucket("functions")
-                .WithObject($"{funcKeyWithoutZip}.ext4")
-                .WithFileName(resultOverlayFile)
-                .WithContentType("application/octet-stream"),
+                .WithObject($"{functionId}/{versionId}.ext4.tar")
+                .WithFileName(tarResultFile)
+                .WithContentType("application/x-tar"),
                 stoppingToken
             );
 
@@ -124,6 +128,7 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
             {
                 File.Delete(rawFuncZipFilePath);
                 File.Delete(resultOverlayFile);
+                File.Delete(tarResultFile);
             }
             catch
             {

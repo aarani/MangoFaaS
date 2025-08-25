@@ -275,11 +275,25 @@ public sealed class FirecrackerProcessPool(
 
         var p = new Process { StartInfo = si, EnableRaisingEvents = true };
         p.Exited += OnProcessExited;
+        p.OutputDataReceived += (s, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data))
+                logger.LogInformation("Firecracker[{Id}] OUT: {Data}", id, e.Data);
+        };
+        p.ErrorDataReceived += (s, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data))
+                logger.LogError("Firecracker[{Id}] ERR: {Data}", id, e.Data);
+        };
+
 
         if (!p.Start())
         {
             throw new InvalidOperationException("Failed to start firecracker process");
         }
+
+        p.BeginOutputReadLine();
+        p.BeginErrorReadLine();
 
         // Optionally, wait a bit for the API socket to become available
         var startedAt = DateTimeOffset.UtcNow;
@@ -300,19 +314,8 @@ public sealed class FirecrackerProcessPool(
             InUse = false
         };
 
-        var client = handle.CreateClient();
-        var logPath = Path.Combine(workDir, $"fc-{id}.log");
-        await File.Create(logPath).DisposeAsync();
-        await client.Logger.PutAsync(new API.Models.Logger
-        {
-            LogPath = logPath,
-            Level = API.Models.Logger_level.Debug,
-            ShowLevel = true,
-            ShowLogOrigin = true
-        });
-
         _all[handle.Id] = handle;
-        logger.LogInformation("Started firecracker process {Id} (PID {Pid}) with API socket {Sock} and Log path {LogPath}", handle.Id, p.Id, apiSock, logPath);
+        logger.LogInformation("Started firecracker process {Id} (PID {Pid}) with API socket {Sock}", handle.Id, p.Id, apiSock);
         return handle;
     }
 

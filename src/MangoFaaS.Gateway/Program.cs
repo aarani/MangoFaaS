@@ -94,7 +94,7 @@ public static class Program
         };
         
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
-        cts.CancelAfter(TimeSpan.FromSeconds(20));
+        cts.CancelAfter(TimeSpan.FromMinutes(1));
         
         var request = new MangoHttpRequest()
         {
