@@ -14,8 +14,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Firecracker.Node"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Functions", "src\MangoFaaS.Functions\MangoFaaS.Functions.csproj", "{6186D5E2-ECA5-4823-BBE8-0EBF0C33F1E4}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Authorization", "src\MangoFaaS.Authorization\MangoFaaS.Authorization.csproj", "{FAEC5F7A-67AF-4922-840F-810A87823F38}"
 EndProject
 Global
@@ -127,8 +125,5 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(NestedProjects) = preSolution
-		{FAEC5F7A-67AF-4922-840F-810A87823F38} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
