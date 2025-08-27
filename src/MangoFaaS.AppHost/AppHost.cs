@@ -1,3 +1,5 @@
+using Aspire.Hosting;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 var kafka =
@@ -18,6 +20,7 @@ var minio =
 
 var gatewaydb = postgres.AddDatabase("gatewaydb");
 var functionsdb = postgres.AddDatabase("functionsdb");
+var authdb = postgres.AddDatabase("authdb");
 
 builder.AddProject<Projects.MangoFaaS_Gateway>("MangoFaaS-Gateway")
     .WithReference(kafka)
@@ -36,7 +39,11 @@ builder.AddProject<Projects.MangoFaaS_Functions>("MangoFaaS-Functions")
     .WithReference(functionsdb)
     .WithReference(minio)
     .WaitFor(kafka)
-    .WaitFor(postgres)
+    .WaitFor(functionsdb)
     .WaitFor(minio);
+
+builder.AddProject<Projects.MangoFaaS_Authorization>("MangoFaaS-Authorization")
+    .WithReference(authdb)
+    .WaitFor(authdb);
 
 builder.Build().Run();
