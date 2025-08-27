@@ -56,6 +56,6 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("MyCors");
 app.MapIdentityApi<IdentityUser>();
-
 await app.RunAsync();
