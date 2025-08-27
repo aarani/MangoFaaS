@@ -1,6 +1,6 @@
 using System;
 
-namespace MangoFaaS.Firecracker.Node;
+namespace MangoFaaS.Firecracker.Node.Pooling;
 
 public class FirecrackerPoolOptions
 {

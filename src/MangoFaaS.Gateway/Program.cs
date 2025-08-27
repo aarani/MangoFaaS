@@ -5,6 +5,7 @@ using Confluent.Kafka.Admin;
 using MangoFaaS.Gateway.Enrichers;
 using MangoFaaS.Gateway.Models;
 using MangoFaaS.Models;
+using MangoFaaS.Models.Helpers;
 using Microsoft.EntityFrameworkCore;
 
 namespace MangoFaaS.Gateway;

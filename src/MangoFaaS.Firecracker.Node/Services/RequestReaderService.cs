@@ -7,13 +7,12 @@ using Confluent.Kafka;
 using MangoFaaS.Common;
 using MangoFaaS.Common.Services;
 using MangoFaaS.Firecracker.API;
+using MangoFaaS.Firecracker.Node.Pooling;
 using MangoFaaS.Models;
 using Microsoft.Extensions.Options;
-using Microsoft.Kiota.Abstractions.Authentication;
-using Microsoft.Kiota.Http.HttpClientLibrary;
 using Minio;
 
-namespace MangoFaaS.Firecracker.Node;
+namespace MangoFaaS.Firecracker.Node.Services;
 
 public class RequestReaderService(ILogger<RequestReaderService> logger, IOptions<FirecrackerPoolOptions> firecrackerOptions, IConsumer<string, MangoHttpRequest> consumer, IMinioClient minioClient, IFirecrackerProcessPool pool, Instrumentation instrumentation, ProcessExecutionService processExecutionService) : BackgroundService
 {
@@ -89,7 +88,6 @@ public class RequestReaderService(ILogger<RequestReaderService> logger, IOptions
                 activity?.AddEvent(new("Kernel set."));
                 await ConfigureDiskAsync(client, request, lease, ct);
                 activity?.AddEvent(new("Disk Set."));
-                await Task.Delay(TimeSpan.FromSeconds(0.5), ct);
                 await StartVm(client, request, lease, ct);
                 activity?.AddEvent(new("VM Started."));
                 //TODO: setup network and vsock
@@ -97,7 +95,7 @@ public class RequestReaderService(ILogger<RequestReaderService> logger, IOptions
             catch (Exception)
             {
                 await lease.MarkAsUnusable();
-                activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Failed to initialize VM for request");
+                activity?.SetStatus(ActivityStatusCode.Error, "Failed to initialize VM for request");
                 throw;
             }
         }

@@ -4,11 +4,11 @@ namespace MangoFaaS.Common;
 
 public class Instrumentation
 {
-    public ActivitySource activitySource = new("MangoFaaS");
+    private readonly ActivitySource _activitySource = new("MangoFaaS");
 
     public Activity? StartActivity(string name)
     {
-        return activitySource.StartActivity(name);
+        return _activitySource.StartActivity(name);
     }
 
 }

@@ -1,9 +1,10 @@
 using Confluent.Kafka;
 using MangoFaaS.Common;
 using MangoFaaS.Common.Services;
-using MangoFaaS.Firecracker.Node;
-using MangoFaaS.IPAM;
+using MangoFaaS.Firecracker.Node.Pooling;
+using MangoFaaS.Firecracker.Node.Services;
 using MangoFaaS.Models;
+using MangoFaaS.Models.Helpers;
 
 var builder = Host.CreateApplicationBuilder(args);
 

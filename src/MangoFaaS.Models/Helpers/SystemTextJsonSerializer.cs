@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Confluent.Kafka;
 
-namespace MangoFaaS.Models;
+namespace MangoFaaS.Models.Helpers;
 
 public class SystemTextJsonSerializer<T> : ISerializer<T>
 {

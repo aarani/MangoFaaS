@@ -72,6 +72,7 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
             var version = await dbContext.FunctionVersions.FindAsync([versionId], cancellationToken: cts.Token) ??
                 throw new InvalidOperationException("Function version not found in DB, cannot proceed!");
 
+            //TODO: get overlay size from the function version metadata
             await processExecutionService.RunProcess("dd", $"if=/dev/zero of={resultOverlayFile} conv=sparse bs=1M count=2048", cts.Token);
             await processExecutionService.RunProcess("mkfs.ext4", $"{resultOverlayFile}", cts.Token);
             Directory.CreateDirectory($"/mnt/{versionId}");

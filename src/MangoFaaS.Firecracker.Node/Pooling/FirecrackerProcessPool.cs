@@ -1,90 +1,10 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Net.Sockets;
-using MangoFaaS.Firecracker.API;
+using MangoFaaS.Firecracker.Node.Pooling;
 using MangoFaaS.IPAM;
 using Microsoft.Extensions.Options;
-using Microsoft.Kiota.Abstractions.Authentication;
-using Microsoft.Kiota.Http.HttpClientLibrary;
 
-namespace MangoFaaS.Firecracker.Node;
-
-public interface IFirecrackerProcessPool
-{
-    Task<FirecrackerLease> AcquireAsync(string functionHash, CancellationToken cancellationToken = default);
-}
-
-public sealed class FirecrackerLease : IAsyncDisposable
-{
-    private readonly FirecrackerProcessPool _pool;
-    internal readonly FirecrackerProcessHandle Handle;
-
-    internal FirecrackerLease(FirecrackerProcessPool pool, FirecrackerProcessHandle handle, bool isWarm)
-    {
-        _pool = pool;
-        Handle = handle;
-        IsWarm = isWarm;
-    }
-
-    public Process Process => Handle.Process;
-    public string ApiSocketPath => Handle.ApiSocketPath;
-    public bool IsWarm { get; private set; }
-    public FirecrackerClient CreateClient() => Handle.CreateClient();
-    public async ValueTask DisposeAsync()
-    {
-        await _pool.Release(Handle);
-    }
-    public async Task MarkAsUnusable(){
-        await _pool.Release(Handle, true);
-    }
-}
-
-internal sealed class FirecrackerProcessHandle
-{
-    public required string Id { get; init; }
-    public required Process Process { get; init; }
-    public required string ApiSocketPath { get; init; }
-    public DateTimeOffset LastUsed { get; set; } = DateTimeOffset.UtcNow;
-    public string LastFunctionHash { get; set; } = string.Empty;
-    public volatile bool InUse;
-
-    public FirecrackerClient CreateClient()
-    {
-        var httpHandler = new SocketsHttpHandler
-        {
-            // Called to open a new connection
-            ConnectCallback = async (ctx, ct) =>
-            {
-                var socketPath = ApiSocketPath ?? throw new InvalidOperationException("No API socket path");
-                // Define the type of socket we want, i.e. a UDS stream-oriented socket
-                var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.IP);
-
-                // Create a UDS endpoint using the socket path
-                var endpoint = new UnixDomainSocketEndPoint(socketPath);
-
-                // Connect to the server!
-                await socket.ConnectAsync(endpoint, ct);
-
-                // Wrap the socket in a NetworkStream and return it
-                // Setting ownsSocket: true means the NetworkStream will 
-                // close and dispose the Socket when the stream is disposed
-                return new NetworkStream(socket, ownsSocket: true);
-            }
-        };
-
-        var httpClient = new HttpClient(httpHandler)
-        {
-            BaseAddress = new Uri("http://localhost")
-        };
-
-
-        var authProvider = new AnonymousAuthenticationProvider();
-        var adapter = new HttpClientRequestAdapter(authProvider, httpClient: httpClient);
-        var client = new FirecrackerClient(adapter);
-
-        return client;
-    }
-}
+namespace MangoFaaS.Firecracker.Node.Pooling;
 
 //FIXME: InUse is not thread-safe; consider using locks if needed
 public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessPool, IAsyncDisposable
@@ -283,6 +203,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
         };
 
         var p = new Process { StartInfo = si, EnableRaisingEvents = true };
+        
         p.Exited += OnProcessExited;
         p.OutputDataReceived += (s, e) =>
         {
@@ -294,7 +215,6 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
             if (!string.IsNullOrWhiteSpace(e.Data))
                 _logger.LogError("Firecracker[{Id}] ERR: {Data}", id, e.Data);
         };
-
 
         if (!p.Start())
         {
@@ -348,6 +268,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
         }
         finally
         {
+            try { File.Delete(handle.ApiSocketPath); } catch { /* ignored */ }
             try { handle.Process.Dispose(); } catch { /* ignore */ }
         }
     }
