@@ -21,7 +21,10 @@ public class FirecrackerPoolOptions
 
     // Max time to wait for process startup
     public int StartupTimeoutSeconds { get; set; } = 15;
-    
+
     // Number of processes to prepare during startup
     public int PrepareCount { get; set; } = 5;
+
+    // IP Subnet for allocation
+    public string IpSubnet { get; set; } = "172.16.0.0/16";
 }

@@ -21,6 +21,7 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.8" />
     <ProjectReference Include="..\MangoFaaS.Models\MangoFaaS.Models.csproj" />
     <ProjectReference Include="..\MangoFaaS.ServiceDefaults\MangoFaaS.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\MangoFaaS.Common\MangoFaaS.Common.csproj" />
   </ItemGroup>
 
 </Project>

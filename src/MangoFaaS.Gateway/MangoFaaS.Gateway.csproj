@@ -20,6 +20,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\MangoFaaS.Models\MangoFaaS.Models.csproj" />
+      <ProjectReference Include="..\MangoFaaS.ServiceDefaults\MangoFaaS.ServiceDefaults.csproj" />
     </ItemGroup>
 
 </Project>

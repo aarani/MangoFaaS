@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
+using MangoFaaS.Common.Services;
 using MangoFaaS.Functions.Models;
 using Medallion.Threading.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +13,7 @@ using Polly;
 
 namespace MangoFaaS.Functions.Services;
 
-public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfiguration configuration, IServiceProvider serviceProvider) : BackgroundService
+public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfiguration configuration, IServiceProvider serviceProvider, ProcessExecutionService processExecutionService) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -71,14 +72,14 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
             var version = await dbContext.FunctionVersions.FindAsync([versionId], cancellationToken: cts.Token) ??
                 throw new InvalidOperationException("Function version not found in DB, cannot proceed!");
 
-            await RunProcess("dd", $"if=/dev/zero of={resultOverlayFile} conv=sparse bs=1M count=2048", cts.Token);
-            await RunProcess("mkfs.ext4", $"{resultOverlayFile}", cts.Token);
+            await processExecutionService.RunProcess("dd", $"if=/dev/zero of={resultOverlayFile} conv=sparse bs=1M count=2048", cts.Token);
+            await processExecutionService.RunProcess("mkfs.ext4", $"{resultOverlayFile}", cts.Token);
             Directory.CreateDirectory($"/mnt/{versionId}");
-            await RunProcess("mount", $"-o loop,sync {resultOverlayFile} /mnt/{versionId}", cts.Token);
+            await processExecutionService.RunProcess("mount", $"-o loop,sync {resultOverlayFile} /mnt/{versionId}", cts.Token);
             Directory.CreateDirectory($"/mnt/{versionId}/root/app");
             ZipFile.ExtractToDirectory(rawFuncZipFilePath, $"/mnt/{versionId}/root/app/", true);
             await File.WriteAllTextAsync($"/mnt/{versionId}/root/entrypoint.txt", version.Entrypoint, cts.Token);
-            await RunProcess("umount", $"/mnt/{versionId}", cts.Token);
+            await processExecutionService.RunProcess("umount", $"/mnt/{versionId}", cts.Token);
 
             ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
                 .AddRetry(new Polly.Retry.RetryStrategyOptions { MaxRetryAttempts = 5, Delay = TimeSpan.FromMilliseconds(500) })
@@ -86,7 +87,7 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
 
             pipeline.Execute(_ => Directory.Delete($"/mnt/{versionId}", true), CancellationToken.None);
 
-            await RunProcess("tar", $"-cSvf {tarResultFile} {resultOverlayFile}", CancellationToken.None);
+            await processExecutionService.RunProcess("tar", $"-cSvf {tarResultFile} {resultOverlayFile}", CancellationToken.None);
 
             _ = await minioClient.PutObjectAsync(new PutObjectArgs()
                 .WithBucket("functions")
@@ -135,41 +136,5 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
                 // ignored
             }
         }
-    }
-
-    private async Task RunProcess(string fileName, string args, CancellationToken token = default)
-    {
-        using Process process = new()
-        {
-            StartInfo =
-            {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                FileName = fileName,
-                Arguments = args
-            }
-        };
-        process.Start();
-        await process.WaitForExitAsync(token);
-        if (process.HasExited)
-        {
-            var errorOutput = await process.StandardError.ReadToEndAsync(token);
-            var output = await process.StandardOutput.ReadToEndAsync(token);
-
-            if (process.ExitCode != 0)
-            {
-                logger.LogError("Process {FileName} {Args} failed with exit code {ExitCode}. Error: {ErrorOutput}", fileName, args, process.ExitCode, errorOutput);
-                throw new InvalidOperationException($"Process failed with error: {errorOutput}");
-            }
-
-            logger.LogInformation("Process {FileName} {Args} completed successfully. Output: {Output}", fileName, args, output);
-
-            return;
-        }
-
-        process.Kill(entireProcessTree: true);
-        throw new InvalidOperationException("Process did not exit properly/timeout-ed!");
     }
 }

@@ -17,6 +17,8 @@ public static class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
+        builder.AddServiceDefaults();
+
         var config = new AdminClientConfig
         {
             BootstrapServers = builder.Configuration.GetConnectionString("kafka")
@@ -50,6 +52,7 @@ public static class Program
         {
             consumerBuilder.SetValueDeserializer(new SystemTextJsonDeserializer<MangoHttpResponse>());
         });
+        
 
         builder.Services.AddMemoryCache();
         

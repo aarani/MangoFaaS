@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Sockets;
 using MangoFaaS.Firecracker.API;
+using MangoFaaS.IPAM;
 using Microsoft.Extensions.Options;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Kiota.Http.HttpClientLibrary;
@@ -86,16 +87,24 @@ internal sealed class FirecrackerProcessHandle
 }
 
 //FIXME: InUse is not thread-safe; consider using locks if needed
-public sealed class FirecrackerProcessPool(
-    IOptions<FirecrackerPoolOptions> options,
-    ILogger<FirecrackerProcessPool> logger)
-    : IHostedService, IFirecrackerProcessPool, IAsyncDisposable
+public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessPool, IAsyncDisposable
 {
-    private readonly FirecrackerPoolOptions _options = options.Value;
+    private readonly FirecrackerPoolOptions _options;
+    private readonly ILogger<FirecrackerProcessPool> _logger;
 
     private readonly ConcurrentDictionary<string, FirecrackerProcessHandle> _all = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<FirecrackerProcessHandle>> _idle = new();
 
+    private readonly IIpPoolManager _ipPoolManager = new IpPoolManager();
+
+    public FirecrackerProcessPool(IOptions<FirecrackerPoolOptions> options, ILogger<FirecrackerProcessPool> logger)
+    {
+        _options = options.Value;
+        _logger = logger;
+
+        _ipPoolManager.AddPool("pool", _options.IpSubnet);
+        _ipPoolManager.SplitIntoSubPools("pool", 30, false);
+    }
 
     public async Task<FirecrackerLease> AcquireAsync(string functionHash = "", CancellationToken cancellationToken = default)
     {
@@ -278,12 +287,12 @@ public sealed class FirecrackerProcessPool(
         p.OutputDataReceived += (s, e) =>
         {
             if (!string.IsNullOrWhiteSpace(e.Data))
-                logger.LogInformation("Firecracker[{Id}] OUT: {Data}", id, e.Data);
+                _logger.LogInformation("Firecracker[{Id}] OUT: {Data}", id, e.Data);
         };
         p.ErrorDataReceived += (s, e) =>
         {
             if (!string.IsNullOrWhiteSpace(e.Data))
-                logger.LogError("Firecracker[{Id}] ERR: {Data}", id, e.Data);
+                _logger.LogError("Firecracker[{Id}] ERR: {Data}", id, e.Data);
         };
 
 
@@ -315,7 +324,7 @@ public sealed class FirecrackerProcessPool(
         };
 
         _all[handle.Id] = handle;
-        logger.LogInformation("Started firecracker process {Id} (PID {Pid}) with API socket {Sock}", handle.Id, p.Id, apiSock);
+        _logger.LogInformation("Started firecracker process {Id} (PID {Pid}) with API socket {Sock}", handle.Id, p.Id, apiSock);
         return handle;
     }
 
@@ -367,7 +376,7 @@ public sealed class FirecrackerProcessPool(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Failed to prewarm firecracker process: {Message}", ex.Message);
+                _logger.LogWarning(ex, "Failed to prewarm firecracker process: {Message}", ex.Message);
             }
         }
     }

@@ -24,9 +24,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\MangoFaaS.Firecracker.Node\MangoFaaS.Firecracker.Node.csproj" />
-      <ProjectReference Include="..\MangoFaaS.Gateway\MangoFaaS.Gateway.csproj" IsAspireProjectResource="false" />
       <ProjectReference Include="..\MangoFaaS.Gateway\MangoFaaS.Gateway.csproj" IsAspireProjectResource="true" />
-      <ProjectReference Include="..\MangoFaaS.Functions\MangoFaaS.Functions.csproj" IsAspireProjectResource="false" />
       <ProjectReference Include="..\MangoFaaS.Functions\MangoFaaS.Functions.csproj" IsAspireProjectResource="true" />
       <ProjectReference Include="..\MangoFaaS.Authorization\MangoFaaS.Authorization.csproj" IsAspireProjectResource="false" />
       <ProjectReference Include="..\MangoFaaS.Authorization\MangoFaaS.Authorization.csproj" IsAspireProjectResource="true" />
