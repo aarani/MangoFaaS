@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Sockets;
 using MangoFaaS.Firecracker.API;
 using Microsoft.Kiota.Abstractions.Authentication;
@@ -13,6 +14,11 @@ internal sealed class FirecrackerProcessHandle
     public required string ApiSocketPath { get; init; }
     public DateTimeOffset LastUsed { get; set; } = DateTimeOffset.UtcNow;
     public string LastFunctionHash { get; set; } = string.Empty;
+    public string TapId { get; set; } = string.Empty;
+    public IPAddress HostIp { get; set; } = IPAddress.None;
+    public IPAddress GuestIp { get; set; } = IPAddress.None;
+    public string PoolName { get; set; } = string.Empty;
+
     public volatile bool InUse;
 
     public FirecrackerClient CreateClient()
