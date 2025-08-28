@@ -1,6 +1,7 @@
 using Confluent.Kafka;
 using MangoFaaS.Common;
 using MangoFaaS.Common.Services;
+using MangoFaaS.Firecracker.Node.Network;
 using MangoFaaS.Firecracker.Node.Pooling;
 using MangoFaaS.Firecracker.Node.Services;
 using MangoFaaS.Models;
@@ -24,6 +25,7 @@ builder.AddKafkaConsumer<string, MangoHttpRequest>("kafka", settings  =>
 
 // Configure Firecracker pool options from configuration
 builder.Services.Configure<FirecrackerPoolOptions>(builder.Configuration.GetSection("FirecrackerPool"));
+builder.Services.Configure<FirecrackerNetworkOptions>(builder.Configuration.GetSection("FirecrackerNetwork"));
 
 // Register the pool as both a singleton and hosted service
 builder.Services.AddSingleton<FirecrackerProcessPool>();
@@ -34,6 +36,10 @@ builder.Services.AddSingleton<Instrumentation>();
 builder.Services.AddSingleton<ProcessExecutionService>();
 
 builder.Services.AddHostedService<RequestReaderService>();
+
+builder.Services.AddIpPoolManager();
+builder.Services.AddSingleton<INetworkSetup, IpTablesNetworkSetup>();
+
 
 var host = builder.Build();
 

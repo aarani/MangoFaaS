@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using MangoFaaS.Firecracker.API;
+using MangoFaaS.Firecracker.Node.Network;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Kiota.Http.HttpClientLibrary;
 
@@ -14,10 +15,7 @@ internal sealed class FirecrackerProcessHandle
     public required string ApiSocketPath { get; init; }
     public DateTimeOffset LastUsed { get; set; } = DateTimeOffset.UtcNow;
     public string LastFunctionHash { get; set; } = string.Empty;
-    public string TapId { get; set; } = string.Empty;
-    public IPAddress HostIp { get; set; } = IPAddress.None;
-    public IPAddress GuestIp { get; set; } = IPAddress.None;
-    public string PoolName { get; set; } = string.Empty;
+    public NetworkSetupEntry NetworkEntry { get; internal set; }
 
     public volatile bool InUse;
 

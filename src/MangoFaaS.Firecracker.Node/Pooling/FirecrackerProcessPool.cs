@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using MangoFaaS.Common.Services;
+using MangoFaaS.Firecracker.Node.Network;
 using MangoFaaS.Firecracker.Node.Pooling;
 using MangoFaaS.IPAM;
 using Microsoft.Extensions.Options;
@@ -13,22 +14,15 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
 {
     private readonly FirecrackerPoolOptions _options;
     private readonly ILogger<FirecrackerProcessPool> _logger;
-
+    private readonly INetworkSetup _networkSetup;
     private readonly ConcurrentDictionary<string, FirecrackerProcessHandle> _all = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<FirecrackerProcessHandle>> _idle = new();
 
-    private readonly IIpPoolManager _ipPoolManager = new IpPoolManager();
-    private readonly ProcessExecutionService _processExecutionService;
-
-    public FirecrackerProcessPool(IOptions<FirecrackerPoolOptions> options, ILogger<FirecrackerProcessPool> logger, ProcessExecutionService processExecutionService)
+    public FirecrackerProcessPool(IOptions<FirecrackerPoolOptions> options, ILogger<FirecrackerProcessPool> logger, INetworkSetup networkSetup)
     {
         _options = options.Value;
         _logger = logger;
-        _processExecutionService = processExecutionService;
-
-        _ipPoolManager.AddPool("pool", _options.IpSubnet);
-        // We need /30 subnets for each VM, 2 reserved, 1 Host, 1 Guest
-        _ipPoolManager.SplitIntoSubPools("pool", 30, false);
+        _networkSetup = networkSetup;
     }
 
     public async Task<FirecrackerLease> AcquireAsync(string functionHash = "", CancellationToken cancellationToken = default)
@@ -98,9 +92,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
     }
 
     private async Task ExecuteAsync(CancellationToken stoppingToken)
-    {   
-        await ConfigureFirewall(stoppingToken);
-        
+    {        
         // Background cleanup loop
         var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(5, (int)_options.IdleTimeout.TotalSeconds / 2)));
         try
@@ -118,11 +110,6 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
         {
             timer.Dispose();
         }
-    }
-
-    private async Task ConfigureFirewall(CancellationToken cancellationToken = default)
-    {
-        await _processExecutionService.RunProcess("iptables-nft", "-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT", cancellationToken);
     }
 
     private async Task CleanupIdle()
@@ -244,37 +231,12 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
             await Task.Delay(50, cancellationToken).ConfigureAwait(false);
         }
 
-        //TODO: separate the network logic 
-
-        var freePool = _ipPoolManager.FindAvailablePool(minFree: 2);
-        if (freePool is null)
-        {
-            p.Kill(entireProcessTree: true);
-            throw new InvalidOperationException("No free IP subnets available for Firecracker VM");
-        }
-    
-        var hostIp = _ipPoolManager.Allocate(freePool);
-        var guestIp = _ipPoolManager.Allocate(freePool);
-        var tapId = $"tap{p.Id}-{RandomNumberGenerator.GetInt32(1000)}";
-        _logger.LogInformation("Firecracker[{Id}] DEBUG: Assigning host ip {hostIp}, guest ip {guestIp} on tap device {tapId}", id, hostIp, guestIp, tapId);
-        
-        await _processExecutionService.RunProcess("ip", $"tuntap add {tapId} mode tap", cancellationToken);
-        await _processExecutionService.RunProcess("ip", $"addr add {hostIp}/30 dev {tapId}", cancellationToken);
-        await _processExecutionService.RunProcess("ip", $"link set {tapId} up", cancellationToken);
-
-        await _processExecutionService.RunProcess("iptables-nft", $"-t nat -A POSTROUTING -o {_options.EgressInterface} -s {guestIp} -j MASQUERADE", cancellationToken);
-        await _processExecutionService.RunProcess("iptables-nft", $"-A FORWARD -i {tapId} -o {_options.EgressInterface} -j ACCEPT", cancellationToken);
-
-
         var handle = new FirecrackerProcessHandle
         {
             Id = id,
             Process = p,
             ApiSocketPath = apiSock,
-            TapId = tapId,
-            HostIp = hostIp,
-            GuestIp = guestIp,
-            PoolName = freePool,
+            NetworkEntry = await _networkSetup.SetupFirecrackerNetwork(p.Id, cancellationToken),
             LastUsed = DateTimeOffset.UtcNow,
             InUse = false
         };
@@ -284,7 +246,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
         await client.NetworkInterfaces["net1"].PutAsync(new API.Models.NetworkInterface
         {
             IfaceId = "net1",
-            HostDevName = tapId
+            HostDevName = handle.NetworkEntry.TapDevice
         }, cancellationToken: cancellationToken);
 
         _all[handle.Id] = handle;
@@ -312,10 +274,9 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
         }
         finally
         {
-            try { await _processExecutionService.RunProcess("ip", $"link del {handle.TapId}", CancellationToken.None); } catch { /* ignored */ }
+            try { await _networkSetup.DestroyFirecrackerNetwork(handle.NetworkEntry); } catch { /* ignored */ }
             try { File.Delete(handle.ApiSocketPath); } catch { /* ignored */ }
             try { handle.Process.Dispose(); } catch { /* ignore */ }
-            try { _ipPoolManager.ReleaseAll(handle.PoolName); } catch { /* ignore */ }
         }
     }
 
@@ -333,6 +294,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        await _networkSetup.Initialize();
         _ = ExecuteAsync(cancellationToken);
         for (var i = 0; i < _options.PrepareCount; i++) // prewarm
         {

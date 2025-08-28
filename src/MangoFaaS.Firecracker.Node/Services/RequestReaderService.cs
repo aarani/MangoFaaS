@@ -202,7 +202,7 @@ public class RequestReaderService(ILogger<RequestReaderService> logger, IOptions
         // Configure the kernel for the Firecracker VM
         await client.BootSource.PutAsync(new API.Models.BootSource
         {
-            BootArgs = $"console=ttyS0 reboot=k panic=1 pci=off ip={lease.Handle.GuestIp}::{lease.Handle.HostIp}:255.255.255.252::eth0:off init=/sbin/overlay-init overlay_root=/vdb",
+            BootArgs = $"console=ttyS0 reboot=k panic=1 pci=off ip={lease.Handle.NetworkEntry.GuestIp}::{lease.Handle.NetworkEntry.HostIp}:255.255.255.252::eth0:off init=/sbin/overlay-init overlay_root=/vdb",
             KernelImagePath = kernelPath
         }, cancellationToken: ct);
     }
