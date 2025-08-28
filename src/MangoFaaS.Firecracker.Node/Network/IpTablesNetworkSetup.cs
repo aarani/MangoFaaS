@@ -26,15 +26,20 @@ public class IpTablesNetworkSetup : INetworkSetup
 
     public async Task DestroyFirecrackerNetwork(NetworkSetupEntry entry)
     {
-        try { await _executionService.RunProcess("iptables-nft", $"-t nat -D POSTROUTING -o {_options.EgressInterface} -s {entry.GuestIp} -j MASQUERADE"); } catch { /* ignored */ }
-        try { await _executionService.RunProcess("iptables-nft", $"-D FORWARD -i {entry.TapDevice} -o {_options.EgressInterface} -j ACCEPT"); } catch { /* ignored */ }
+//        try { await _executionService.RunProcess("iptables-nft", $"-t nat -D POSTROUTING -o {_options.EgressInterface} -s {entry.GuestIp} -j MASQUERADE"); } catch { /* ignored */ }
+//        try { await _executionService.RunProcess("iptables-nft", $"-D FORWARD -i {entry.TapDevice} -o {_options.EgressInterface} -j ACCEPT"); } catch { /* ignored */ }
         try { await _executionService.RunProcess("ip", $"link del {entry.TapDevice}", CancellationToken.None); } catch { /* ignored */ }
         try { _ipPoolManager.ReleaseAll(entry.PoolName); } catch { /* ignored */ }
     }
 
     public async Task Initialize()
     {
+        // Allow new outbound connections from any tap* interface to the egress interface
+        await _executionService.RunProcess("iptables-nft", $"-A FORWARD -i tap+ -o \"{_options.EgressInterface}\" -m conntrack --ctstate NEW -j ACCEPT");
+        // Allow return traffic
         await _executionService.RunProcess("iptables-nft", "-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT");
+        try { await _executionService.RunProcess("iptables-nft", $"-t nat -D POSTROUTING -o \"{_options.EgressInterface}\" -j MASQUERADE"); } catch { /* ignored */ }
+        await _executionService.RunProcess("iptables-nft", $"-t nat -A POSTROUTING -o \"{_options.EgressInterface}\" -j MASQUERADE");
     }
 
     public async Task<NetworkSetupEntry> SetupFirecrackerNetwork(int processId, CancellationToken cancellationToken = default)
@@ -50,8 +55,11 @@ public class IpTablesNetworkSetup : INetworkSetup
         await _executionService.RunProcess("ip", $"addr add {hostIp}/30 dev {tapId}", cancellationToken);
         await _executionService.RunProcess("ip", $"link set {tapId} up", cancellationToken);
 
-        await _executionService.RunProcess("iptables-nft", $"-t nat -A POSTROUTING -o {_options.EgressInterface} -s {guestIp} -j MASQUERADE", cancellationToken);
-        await _executionService.RunProcess("iptables-nft", $"-A FORWARD -i {tapId} -o {_options.EgressInterface} -j ACCEPT", cancellationToken);
+
+        //await _executionService.RunProcess("iptables-nft", $"-t nat -D POSTROUTING -o \"{_options.EgressInterface}\" -j MASQUERADE");
+
+        //        await _executionService.RunProcess("iptables-nft", $"-t nat -A POSTROUTING -o {_options.EgressInterface} -s {guestIp} -j MASQUERADE", cancellationToken);
+        //        await _executionService.RunProcess("iptables-nft", $"-A FORWARD -i {tapId} -o {_options.EgressInterface} -j ACCEPT", cancellationToken);
 
         return new NetworkSetupEntry(hostIp, guestIp, tapId, freePool);
     }
