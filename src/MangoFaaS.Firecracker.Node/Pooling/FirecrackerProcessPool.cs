@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using MangoFaaS.Common.Services;
+using MangoFaaS.Firecracker.Node.Kestrel;
 using MangoFaaS.Firecracker.Node.Network;
 using MangoFaaS.Firecracker.Node.Pooling;
 using MangoFaaS.IPAM;
@@ -17,30 +18,29 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
     private readonly INetworkSetup _networkSetup;
     private readonly ConcurrentDictionary<string, FirecrackerProcessHandle> _all = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<FirecrackerProcessHandle>> _idle = new();
+    private readonly UnixKestrelSetup _kestrelSetup;
 
-    public FirecrackerProcessPool(IOptions<FirecrackerPoolOptions> options, ILogger<FirecrackerProcessPool> logger, INetworkSetup networkSetup)
+    public FirecrackerProcessPool(IOptions<FirecrackerPoolOptions> options, ILogger<FirecrackerProcessPool> logger, INetworkSetup networkSetup, UnixKestrelSetup kestrelSetup)
     {
         _options = options.Value;
         _logger = logger;
         _networkSetup = networkSetup;
+        _kestrelSetup = kestrelSetup;
     }
 
-    public async Task<FirecrackerLease> AcquireAsync(string functionHash = "", CancellationToken cancellationToken = default)
+    public async Task<FirecrackerLease> AcquireAsync(string functionId, CancellationToken cancellationToken = default)
     {
         // Function name is empty, this is used when prewarming or no specific function is known
-        if (string.IsNullOrWhiteSpace(functionHash))
+        if (string.IsNullOrWhiteSpace(functionId))
         {
-            var newHandle = await StartNewAsync(cancellationToken).ConfigureAwait(false);
-            newHandle.InUse = true;
-            newHandle.LastUsed = DateTimeOffset.UtcNow;
-            return new FirecrackerLease(this, newHandle, false);
+            throw new Exception("Function ID must be provided");
         }
 
         // Fast path: reuse an idle process
         while (true)
         {
             // Really fast path, check if we have VM with the same function id
-            if (_idle.TryGetValue(functionHash, out var queue) && queue.TryDequeue(out var handle))
+            if (_idle.TryGetValue(functionId, out var queue) && queue.TryDequeue(out var handle))
             {
                 if (IsHealthy(handle))
                 {
@@ -60,7 +60,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
                 {
                     genericHandle.InUse = true;
                     genericHandle.LastUsed = DateTimeOffset.UtcNow;
-                    genericHandle.LastFunctionHash = functionHash;
+                    genericHandle.LastFunctionHash = functionId;
                     return new FirecrackerLease(this, genericHandle, false);
                 }
                 // Drop unhealthy/exited; continue loop
@@ -69,10 +69,10 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
             }
 
             // No idle: we can create a new one
-            var newHandle = await StartNewAsync(cancellationToken).ConfigureAwait(false);
+            var newHandle = await StartNewAsync(functionId, cancellationToken).ConfigureAwait(false);
             newHandle.InUse = true;
             newHandle.LastUsed = DateTimeOffset.UtcNow;
-            newHandle.LastFunctionHash = functionHash;
+            newHandle.LastFunctionHash = functionId;
             return new FirecrackerLease(this, newHandle, false);
         }
     }
@@ -92,7 +92,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
     }
 
     private async Task ExecuteAsync(CancellationToken stoppingToken)
-    {        
+    {
         // Background cleanup loop
         var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(5, (int)_options.IdleTimeout.TotalSeconds / 2)));
         try
@@ -170,7 +170,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
         }
     }
 
-    private async Task<FirecrackerProcessHandle> StartNewAsync(CancellationToken cancellationToken)
+    private async Task<FirecrackerProcessHandle> StartNewAsync(string functionId, CancellationToken cancellationToken)
     {
         if (!File.Exists(_options.FirecrackerPath))
         {
@@ -237,6 +237,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
             Process = p,
             ApiSocketPath = apiSock,
             NetworkEntry = await _networkSetup.SetupFirecrackerNetwork(p.Id, cancellationToken),
+            KestrelEntry = null!,
             LastUsed = DateTimeOffset.UtcNow,
             InUse = false
         };
@@ -248,6 +249,13 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
             IfaceId = "net1",
             HostDevName = handle.NetworkEntry.TapDevice
         }, cancellationToken: cancellationToken);
+
+        var udsPath = Path.Combine(workDir, $"v-{id}.sock");
+
+        await client.Vsock.PutAsync(new API.Models.Vsock() { GuestCid = 3, UdsPath = $"./v-{id}.sock" }, cancellationToken: cancellationToken);
+        _logger.LogInformation("Configured vsock (CID 3) with UDS path {Path}", udsPath);
+
+        handle.KestrelEntry = await _kestrelSetup.StartListening(udsPath, functionId);
 
         _all[handle.Id] = handle;
         _logger.LogInformation("Started firecracker process {Id} (PID {Pid}) with API socket {Sock}", handle.Id, p.Id, apiSock);
@@ -274,6 +282,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
         }
         finally
         {
+            try { await handle.KestrelEntry.Server.StopAsync(default); } catch { /* ignored */ }
             try { await _networkSetup.DestroyFirecrackerNetwork(handle.NetworkEntry); } catch { /* ignored */ }
             try { File.Delete(handle.ApiSocketPath); } catch { /* ignored */ }
             try { handle.Process.Dispose(); } catch { /* ignore */ }
@@ -295,19 +304,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await _networkSetup.Initialize();
-        _ = ExecuteAsync(cancellationToken);
-        for (var i = 0; i < _options.PrepareCount; i++) // prewarm
-        {
-            try
-            {
-                var handle = await AcquireAsync("", cancellationToken);
-                await handle.DisposeAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to prewarm firecracker process: {Message}", ex.Message);
-            }
-        }
+        _ = Task.Run(() => ExecuteAsync(cancellationToken), cancellationToken);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

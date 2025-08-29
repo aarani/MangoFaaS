@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using MangoFaaS.Firecracker.API;
+using MangoFaaS.Firecracker.Node.Kestrel;
 using MangoFaaS.Firecracker.Node.Network;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Kiota.Http.HttpClientLibrary;
@@ -16,6 +17,7 @@ internal sealed class FirecrackerProcessHandle
     public DateTimeOffset LastUsed { get; set; } = DateTimeOffset.UtcNow;
     public string LastFunctionHash { get; set; } = string.Empty;
     public NetworkSetupEntry NetworkEntry { get; internal set; }
+    public required UnixKestrelEntry KestrelEntry { get; internal set; }
 
     public volatile bool InUse;
 

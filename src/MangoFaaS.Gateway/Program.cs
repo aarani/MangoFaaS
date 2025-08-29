@@ -1,7 +1,7 @@
 using System.Text;
 using Aspire.Confluent.Kafka;
 using Confluent.Kafka;
-using Confluent.Kafka.Admin;
+using MangoFaaS.Common.Helpers;
 using MangoFaaS.Gateway.Enrichers;
 using MangoFaaS.Gateway.Models;
 using MangoFaaS.Models;
@@ -18,26 +18,10 @@ public static class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
+        await KafkaHelpers.CreateTopicAsync(builder, "kafka", "requests", numPartitions: 3, replicationFactor: 1);
+        await KafkaHelpers.CreateTopicAsync(builder, "kafka", ReplyToTopic, numPartitions: 1, replicationFactor: 1);
+
         builder.AddServiceDefaults();
-
-        var config = new AdminClientConfig
-        {
-            BootstrapServers = builder.Configuration.GetConnectionString("kafka")
-        };
-
-        using var adminClient = new AdminClientBuilder(config).Build();
-        try
-        {
-            await adminClient.CreateTopicsAsync([
-                new TopicSpecification { Name = ReplyToTopic, NumPartitions = 1, ReplicationFactor = 1 },
-                new TopicSpecification { Name = "requests", NumPartitions = 1, ReplicationFactor = 1 }
-            ]);
-        }
-        catch (CreateTopicsException e)
-        {
-            Console.WriteLine($"An error occurred creating topic: {e.Message}");
-            throw;
-        }
         
         builder.AddKafkaProducer<string, MangoHttpRequest>("kafka", consumerBuilder =>
         {
@@ -54,7 +38,6 @@ public static class Program
             consumerBuilder.SetValueDeserializer(new SystemTextJsonDeserializer<MangoHttpResponse>());
         });
         
-
         builder.Services.AddMemoryCache();
         
         builder.Services.AddSingleton<ResponseReaderService>();
@@ -106,7 +89,8 @@ public static class Program
             Host = context.Request.Host.Host.ToLower(),
             Path = context.Request.Path + context.Request.QueryString,
             Body = await new StreamReader(context.Request.Body).ReadToEndAsync(cts.Token),
-            Headers = context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString())
+            Headers = context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()),
+            CorrelationId = correlationId
         };
         
         var enrichers = serviceProvider.GetServices<IEnricher>();
@@ -123,13 +107,12 @@ public static class Program
 
         await producer.ProduceAsync("requests", new Message<string, MangoHttpRequest>
         {
-            Key = "request",
+            Key = $"{request.FunctionId}:{request.FunctionVersion}",
             Value = request,
             Headers = headers
         }, cts.Token);
         
         var tcs = new TaskCompletionSource<MangoHttpResponse>();
-        
         // Add the request to the pending requests dictionary and remove it when the token is cancelled
         responseReader.AddRequest(correlationId, tcs);
         cts.Token.Register(() => responseReader.RemoveRequest(correlationId));

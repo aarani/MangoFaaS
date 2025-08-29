@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Formats.Tar;
 using System.Net.Sockets;
 using System.Text;
@@ -11,65 +12,199 @@ using MangoFaaS.Firecracker.Node.Pooling;
 using MangoFaaS.Models;
 using Microsoft.Extensions.Options;
 using Minio;
+using System.Threading.Channels;
+using MangoFaaS.Firecracker.Node.Models;
+using MangoFaaS.Firecracker.Node.Store;
 
 namespace MangoFaaS.Firecracker.Node.Services;
 
-public class RequestReaderService(ILogger<RequestReaderService> logger, IOptions<FirecrackerPoolOptions> firecrackerOptions, IConsumer<string, MangoHttpRequest> consumer, IMinioClient minioClient, IFirecrackerProcessPool pool, Instrumentation instrumentation, ProcessExecutionService processExecutionService) : BackgroundService
+public class RequestReaderService(
+    ILogger<RequestReaderService> logger,
+    IOptions<FirecrackerPoolOptions> firecrackerOptions,
+    IConsumer<string, MangoHttpRequest> consumer,
+    IProducer<string, MangoHttpResponse> producer,
+    IMinioClient minioClient,
+    IFirecrackerProcessPool pool,
+    Instrumentation instrumentation,
+    ProcessExecutionService processExecutionService,
+    PendingRequestStore pendingRequestStore) : BackgroundService
 {
+    // Global + per-partition concurrency limits (TODO: make configurable via options)
+    private const int GlobalMaxConcurrency = 64;
+    private const int MaxInFlightPerPartition = 4;
+
+    private sealed class PartitionState
+    {
+        public long NextCommitOffset; // first offset NOT yet committed (commit cursor)
+        public bool Initialized;
+        public readonly SortedSet<long> CompletedOffsets = new(); // processed offsets awaiting gap closure
+        public int InFlight; // tasks currently running for this partition
+        public readonly Queue<ConsumeResult<string, MangoHttpRequest>> Pending = new(); // queued when per-partition limit hit
+        public readonly object LockObj = new();
+    }
+
+    private readonly ConcurrentDictionary<TopicPartition, PartitionState> _partitionStates = new();
+    private readonly ConcurrentQueue<TopicPartitionOffset> _commitQueue = new();
+    private readonly SemaphoreSlim _globalSemaphore = new(GlobalMaxConcurrency, GlobalMaxConcurrency);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        consumer.Subscribe("requests");
-
-        await Task.Run(async () =>
+        await Task.Run(() =>
         {
+            
+            consumer.Subscribe("requests");
+
             try
             {
                 while (!stoppingToken.IsCancellationRequested)
                 {
+                    // Drain pending commits on consumer thread to maintain ordering guarantees
+                    while (_commitQueue.TryDequeue(out var tpo))
+                    {
+                        try { consumer.Commit([tpo]); }
+                        catch (Exception e) { logger.LogWarning(e, "Commit failed for {TPO}", tpo); }
+                    }
+
                     ConsumeResult<string, MangoHttpRequest>? cr = null;
                     try
                     {
-                        cr = consumer.Consume(stoppingToken);
-                        if (cr?.Message == null) continue;
-
-                        var correlationId = GetHeader(cr.Message.Headers, "correlationId");
-                        if (correlationId == null) continue;
-
-                        // Process the request (cr.Message.Value)
-                        await HandleRequestAsync(cr.Message.Value, correlationId, pool, stoppingToken);
+                        cr = consumer.Consume(TimeSpan.FromMilliseconds(100)); // short poll to keep heartbeats flowing
                     }
                     catch (OperationCanceledException)
                     {
-                        // Ignore cancellation
+                        break;
                     }
                     catch (Exception ex)
                     {
-                        // Log exception
-                        Console.WriteLine($"Error consuming message: {ex}");
+                        logger.LogError(ex, "Consume error");
+                        continue;
                     }
-                    finally
+
+                    if (cr?.Message == null) continue;
+
+                    var tp = cr.TopicPartition;
+                    var state = _partitionStates.GetOrAdd(tp, _ => new PartitionState());
+                    bool enqueuedPending = false;
+
+                    lock (state.LockObj)
                     {
-                        // Manually commit the offset after processing
-                        if (cr is not null)
-                            consumer.Commit(cr);
+                        if (!state.Initialized)
+                        {
+                            state.NextCommitOffset = cr.Offset.Value; // earliest offset we may commit (exclusive)
+                            state.Initialized = true;
+                        }
 
-                        cr = null;
+                        if (state.InFlight >= MaxInFlightPerPartition)
+                        {
+                            state.Pending.Enqueue(cr);
+                            enqueuedPending = true;
+                        }
                     }
-                }
 
+                    if (enqueuedPending) continue; // will be dispatched when a slot frees
+
+                    Dispatch(cr, state, stoppingToken);
+                }
             }
             finally
             {
-                consumer.Close();
+                try { consumer.Close(); } catch { /* ignore */ }
             }
         }, stoppingToken);
-
     }
 
-    private async Task HandleRequestAsync(MangoHttpRequest request, string correlationId, IFirecrackerProcessPool pool, CancellationToken ct)
+    private void Dispatch(ConsumeResult<string, MangoHttpRequest> cr, PartitionState state, CancellationToken ct)
     {
+        lock (state.LockObj)
+        {
+            state.InFlight++;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            var tp = cr.TopicPartition;
+            var offsetVal = cr.Offset.Value;
+            try
+            {
+                await _globalSemaphore.WaitAsync(ct).ConfigureAwait(false);
+                await HandleRequestAsync(cr, ct).ConfigureAwait(false);
+                MarkCompleted(tp, offsetVal);
+            }
+            catch (OperationCanceledException)
+            {
+                // shutting down; do not mark completed (will reprocess on restart)
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Processing failed for {TPO}", cr.TopicPartitionOffset);
+                // leave gap -> earlier offsets block commit window (at-least-once semantics)
+            }
+            finally
+            {
+                _globalSemaphore.Release();
+                FinishAndMaybeDispatchNext(tp);
+            }
+        }, CancellationToken.None);
+    }
+
+    private void FinishAndMaybeDispatchNext(TopicPartition tp)
+    {
+        if (!_partitionStates.TryGetValue(tp, out var state)) return;
+        ConsumeResult<string, MangoHttpRequest>? next = null;
+
+        lock (state.LockObj)
+        {
+            state.InFlight--;
+            if (state.InFlight < MaxInFlightPerPartition && state.Pending.Count > 0)
+            {
+                next = state.Pending.Dequeue();
+            }
+        }
+
+        if (next != null)
+        {
+            Dispatch(next, state, CancellationToken.None);
+        }
+    }
+
+    private void MarkCompleted(TopicPartition tp, long offset)
+    {
+        var state = _partitionStates[tp];
+        TopicPartitionOffset? toCommit = null;
+
+        lock (state.LockObj)
+        {
+            state.CompletedOffsets.Add(offset);
+
+            // Advance commit cursor while we have a contiguous run from NextCommitOffset
+            while (state.CompletedOffsets.Contains(state.NextCommitOffset))
+            {
+                state.CompletedOffsets.Remove(state.NextCommitOffset);
+                state.NextCommitOffset++;
+            }
+
+            // If we advanced past this offset we can commit up to NextCommitOffset (exclusive)
+            if (offset < state.NextCommitOffset)
+            {
+                toCommit = new TopicPartitionOffset(tp, new Offset(state.NextCommitOffset));
+            }
+        }
+
+        if (toCommit is TopicPartitionOffset tpo)
+        {
+            _commitQueue.Enqueue(tpo);
+        }
+    }
+
+    private async Task HandleRequestAsync(ConsumeResult<string, MangoHttpRequest> cr, CancellationToken ct)
+    {
+        var correlationId = GetHeader(cr.Message.Headers, "correlationId") ?? throw new InvalidOperationException("No correlationId header in request");
+        var replyTo = GetHeader(cr.Message.Headers, "replyTo") ?? throw new InvalidOperationException("No replyTo header in request");
+        var httpRequest = cr.Message.Value;
+        var functionId = $"{cr.Message.Value.FunctionId}:{cr.Message.Value.FunctionVersion}";
+
         using var activity = instrumentation.StartActivity($"Handling {correlationId}");
-        await using var lease = await pool.AcquireAsync(request.FunctionId ?? throw new InvalidOperationException("Non-enriched request received at Node"), ct);
+        await using var lease = await pool.AcquireAsync(functionId ?? throw new InvalidOperationException("Non-enriched request received at Node"), ct);
         var p = lease.Process;
 
         // We can short-circuit the initalization if VM is already initialized for this function
@@ -81,16 +216,14 @@ public class RequestReaderService(ILogger<RequestReaderService> logger, IOptions
 
             logger.LogInformation("Sending request to Firecracker API socket at {SocketPath}", lease.ApiSocketPath);
             logger.LogInformation("Handling {correlationId} using firecracker PID {processId}", correlationId, p.Id);
-            logger.LogInformation("{}", (await client.Version.GetAsync(cancellationToken: ct))?.FirecrackerVersionProp);
             try
             {
                 await ConfigureKernelAsync(client, lease, ct);
                 activity?.AddEvent(new("Kernel set."));
-                await ConfigureDiskAsync(client, request, lease, ct);
+                await ConfigureDiskAsync(client, httpRequest, lease, ct);
                 activity?.AddEvent(new("Disk Set."));
-                await StartVm(client, request, lease, ct);
+                await StartVm(client, httpRequest, lease, ct);
                 activity?.AddEvent(new("VM Started."));
-                //TODO: setup network and vsock
             }
             catch (Exception)
             {
@@ -104,8 +237,11 @@ public class RequestReaderService(ILogger<RequestReaderService> logger, IOptions
             activity?.AddEvent(new("Reusing warm VM"));
         }
 
-
-        //TODO: give request to VM
+        var responseTcs = new TaskCompletionSource<MangoHttpResponse>();
+        await pendingRequestStore.WritePendingRequest(functionId, new PendingRequest(httpRequest, responseTcs, correlationId, cr.TopicPartition, cr.Offset));
+        var response = await responseTcs.Task;
+        await producer.ProduceAsync(replyTo, new Message<string, MangoHttpResponse>() { Key = functionId, Value = response, Headers = [new Header("correlationId", Encoding.UTF8.GetBytes(correlationId))] }, ct);
+        logger.LogInformation("Sent response for correlationId {CorrelationId} to topic {topic}", correlationId, replyTo);
     }
 
     private async Task StartVm(FirecrackerClient client, MangoHttpRequest request, FirecrackerLease lease, CancellationToken ct)

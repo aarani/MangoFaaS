@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using MangoFaaS.Common.Services;
 using MangoFaaS.IPAM;
@@ -12,13 +13,15 @@ public class IpTablesNetworkSetup : INetworkSetup
     private readonly IIpPoolManager _ipPoolManager;
     private readonly FirecrackerNetworkOptions _options;
 
+    private readonly SemaphoreSlim poolSearchLock = new(1, 1);
+
     public IpTablesNetworkSetup(ILogger<IpTablesNetworkSetup> logger, ProcessExecutionService executionService, IIpPoolManager ipPoolManager, IOptions<FirecrackerNetworkOptions> options)
     {
         _logger = logger;
         _executionService = executionService;
         _ipPoolManager = ipPoolManager;
         _options = options.Value;
-        
+
         ipPoolManager.AddPool("pool", _options.IpSubnet);
         // We need /30 subnets for each VM, 2 reserved, 1 Host, 1 Guest
         ipPoolManager.SplitIntoSubPools("pool", 30, false);
@@ -42,10 +45,23 @@ public class IpTablesNetworkSetup : INetworkSetup
 
     public async Task<NetworkSetupEntry> SetupFirecrackerNetwork(int processId, CancellationToken cancellationToken = default)
     {
-        var freePool = _ipPoolManager.FindAvailablePool(minFree: 2)
-            ?? throw new InvalidOperationException("No free IP subnets available for Firecracker VM");
-        var hostIp = _ipPoolManager.Allocate(freePool);
-        var guestIp = _ipPoolManager.Allocate(freePool);
+        IPAddress hostIp;
+        IPAddress guestIp;
+        string freePool;
+
+        await poolSearchLock.WaitAsync(cancellationToken);
+        try
+        {
+            freePool = _ipPoolManager.FindAvailablePool(minFree: 2)
+                ?? throw new InvalidOperationException("No free IP subnets available for Firecracker VM");
+            hostIp = _ipPoolManager.Allocate(freePool);
+            guestIp = _ipPoolManager.Allocate(freePool);
+        }
+        finally
+        {
+            poolSearchLock.Release();
+        }
+       
         var tapId = $"tap{processId}-{RandomNumberGenerator.GetInt32(1000)}";
         _logger.LogInformation("Firecracker[{Id}] DEBUG: Assigning host ip {hostIp}, guest ip {guestIp} on tap device {tapId}", processId, hostIp, guestIp, tapId);
 
