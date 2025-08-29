@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.Collections.Concurrent;
-using System.Formats.Tar;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Confluent.Kafka;
@@ -12,7 +10,6 @@ using MangoFaaS.Firecracker.Node.Pooling;
 using MangoFaaS.Models;
 using Microsoft.Extensions.Options;
 using Minio;
-using System.Threading.Channels;
 using MangoFaaS.Firecracker.Node.Models;
 using MangoFaaS.Firecracker.Node.Store;
 
@@ -23,10 +20,9 @@ public class RequestReaderService(
     IOptions<FirecrackerPoolOptions> firecrackerOptions,
     IConsumer<string, MangoHttpRequest> consumer,
     IProducer<string, MangoHttpResponse> producer,
-    IMinioClient minioClient,
     IFirecrackerProcessPool pool,
     Instrumentation instrumentation,
-    ProcessExecutionService processExecutionService,
+    IImageDownloadService imageDownloadService,
     PendingRequestStore pendingRequestStore) : BackgroundService
 {
     // Global + per-partition concurrency limits (TODO: make configurable via options)
@@ -218,11 +214,9 @@ public class RequestReaderService(
             logger.LogInformation("Handling {correlationId} using firecracker PID {processId}", correlationId, p.Id);
             try
             {
-                await ConfigureKernelAsync(client, lease, ct);
-                activity?.AddEvent(new("Kernel set."));
                 await ConfigureDiskAsync(client, httpRequest, lease, ct);
                 activity?.AddEvent(new("Disk Set."));
-                await StartVm(client, httpRequest, lease, ct);
+                await StartVm(client, ct);
                 activity?.AddEvent(new("VM Started."));
             }
             catch (Exception)
@@ -244,7 +238,7 @@ public class RequestReaderService(
         logger.LogInformation("Sent response for correlationId {CorrelationId} to topic {topic}", correlationId, replyTo);
     }
 
-    private async Task StartVm(FirecrackerClient client, MangoHttpRequest request, FirecrackerLease lease, CancellationToken ct)
+    private async Task StartVm(FirecrackerClient client, CancellationToken ct)
     {
         await client.Actions.PutAsync(new API.Models.InstanceActionInfo
         {
@@ -254,65 +248,19 @@ public class RequestReaderService(
 
     private async Task ConfigureDiskAsync(FirecrackerClient client, MangoHttpRequest request, FirecrackerLease lease, CancellationToken ct)
     {
-        var rootfsPath = GetTempFileName();
+        ArgumentNullException.ThrowIfNull(request.FunctionId);
+        ArgumentNullException.ThrowIfNull(request.FunctionVersion);
+
+        (var cachedRootfs, var cachedKernelPath, var cachedOverlayfsPath) =
+            await imageDownloadService.DownloadImagesForFunctionAsync(request.FunctionId!, request.FunctionVersion!, ct);
+
         var overlayfsPath = GetTempFileName();
-
-        async Task DownloadAndExtract(string bucket, string objectName, string destFilePath)
-        {
-            var compressedPath = GetTempFileName();
-            var extractDirectory = new DirectoryInfo(GetTempFileName());
-            extractDirectory.Create();
-
-            using var memStream = new MemoryStream();
-
-            using (var downloadActivity = instrumentation.StartActivity($"Downloading {objectName} from {bucket}"))
-            {
-                await minioClient.GetObjectAsync(new Minio.DataModel.Args.GetObjectArgs()
-                    .WithBucket(bucket)
-                    .WithObject(objectName)
-                    .WithFile(compressedPath), ct);   
-            }
-
-            using (var extractActivity = instrumentation.StartActivity($"Extracting {objectName}"))
-            {
-                await processExecutionService.RunProcess("tar", $"-xSvf {compressedPath} -C {extractDirectory}/", ct);
-            }
-
-            var filePath = extractDirectory.EnumerateFiles("*", SearchOption.AllDirectories).FirstOrDefault()
-                ?? throw new InvalidOperationException("No file found in extracted directory");
-
-            File.Move(filePath.FullName, destFilePath, overwrite: true);
-        }
-
-        async Task FindAndDownloadRootfs()
-        {
-            using var memStream = new MemoryStream();
-
-            await minioClient.GetObjectAsync(new Minio.DataModel.Args.GetObjectArgs()
-                .WithBucket("function-manifests")
-                .WithObject($"{request.FunctionId}/{request.FunctionVersion}.json")
-                .WithCallbackStream((s, ct) => s.CopyToAsync(memStream, ct)), ct);
-
-            memStream.Seek(0, SeekOrigin.Begin);
-
-            MangoFunctionManifest mangoFunctionManifest =
-                await JsonSerializer.DeserializeAsync<MangoFunctionManifest>(memStream, cancellationToken: ct)
-                    ?? throw new InvalidOperationException("Failed to deserialize function manifest");
-
-            await minioClient.GetObjectAsync(new Minio.DataModel.Args.GetObjectArgs()
-                .WithBucket("runtimes")
-                .WithObject($"{mangoFunctionManifest.RuntimeImage}.ext4.tar")
-                .WithFile(rootfsPath), ct);
-
-            await DownloadAndExtract("runtimes", $"{mangoFunctionManifest.RuntimeImage}.ext4.tar", rootfsPath);
-        }
-
-        await Task.WhenAll(FindAndDownloadRootfs(), DownloadAndExtract("functions", $"{request.FunctionId}/{request.FunctionVersion}.ext4.tar", overlayfsPath));
+        cachedOverlayfsPath.File.CopyTo(overlayfsPath, true);
 
         await client.Drives["rootfs"].PutAsync(new API.Models.Drive
         {
             DriveId = "rootfs",
-            PathOnHost = rootfsPath,
+            PathOnHost = cachedRootfs.File.FullName,
             IsReadOnly = true,
             IsRootDevice = true
         }, cancellationToken: ct);
@@ -324,23 +272,17 @@ public class RequestReaderService(
             IsReadOnly = false,
             IsRootDevice = false
         }, cancellationToken: ct);
-    }
-
-    private async Task ConfigureKernelAsync(FirecrackerClient client, FirecrackerLease lease, CancellationToken ct)
-    {
-        var kernelPath = GetTempFileName();
-
-        await minioClient.GetObjectAsync(new Minio.DataModel.Args.GetObjectArgs()
-            .WithBucket("runtimes")
-            .WithObject("00000000-0000-0000-0000-000000000000.vmlinux")
-            .WithFile(kernelPath), ct);
 
         // Configure the kernel for the Firecracker VM
         await client.BootSource.PutAsync(new API.Models.BootSource
         {
             BootArgs = $"console=ttyS0 reboot=k panic=1 pci=off ip={lease.Handle.NetworkEntry.GuestIp}::{lease.Handle.NetworkEntry.HostIp}:255.255.255.252::eth0:off init=/sbin/overlay-init overlay_root=/vdb",
-            KernelImagePath = kernelPath
+            KernelImagePath = cachedKernelPath.File.FullName
         }, cancellationToken: ct);
+
+        lease.Handle.Disposables.Add(cachedRootfs);
+        lease.Handle.Disposables.Add(cachedKernelPath);
+        lease.Handle.Disposables.Add(cachedOverlayfsPath);
     }
 
     private static string? GetHeader(Headers headers, string name)

@@ -17,7 +17,7 @@ public class FirecrackerPoolOptions
     public int MaxPoolSize { get; set; } = 4;
 
     // How long an idle process is kept alive before being terminated
-    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(5);
+    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(1);
 
     // Max time to wait for process startup
     public int StartupTimeoutSeconds { get; set; } = 15;

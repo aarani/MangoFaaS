@@ -137,7 +137,6 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
             while (idles.TryDequeue(out var h2))
             {
                 if (IsHealthy(h2) && _all.ContainsKey(h2.Id)) temp.Add(h2);
-                else await TryKill(h2);
             }
             foreach (var h in temp) idles.Enqueue(h);
         }
@@ -239,7 +238,8 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
             NetworkEntry = await _networkSetup.SetupFirecrackerNetwork(p.Id, cancellationToken),
             KestrelEntry = null!,
             LastUsed = DateTimeOffset.UtcNow,
-            InUse = false
+            InUse = false,
+            Disposables = []
         };
 
         var client = handle.CreateClient();
@@ -286,6 +286,10 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
             try { await _networkSetup.DestroyFirecrackerNetwork(handle.NetworkEntry); } catch { /* ignored */ }
             try { File.Delete(handle.ApiSocketPath); } catch { /* ignored */ }
             try { handle.Process.Dispose(); } catch { /* ignore */ }
+            foreach (var d in handle.Disposables)
+            {
+                try { d.Dispose(); } catch { /* ignored */ }
+            }
         }
     }
 
@@ -304,7 +308,7 @@ public sealed class FirecrackerProcessPool: IHostedService, IFirecrackerProcessP
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await _networkSetup.Initialize();
-        _ = Task.Run(() => ExecuteAsync(cancellationToken), cancellationToken);
+        _ = ExecuteAsync(cancellationToken);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

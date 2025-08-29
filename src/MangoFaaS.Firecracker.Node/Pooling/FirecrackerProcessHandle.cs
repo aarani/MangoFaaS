@@ -18,6 +18,7 @@ internal sealed class FirecrackerProcessHandle
     public string LastFunctionHash { get; set; } = string.Empty;
     public NetworkSetupEntry NetworkEntry { get; internal set; }
     public required UnixKestrelEntry KestrelEntry { get; internal set; }
+    public required List<IDisposable> Disposables { get; internal set; }
 
     public volatile bool InUse;
 
