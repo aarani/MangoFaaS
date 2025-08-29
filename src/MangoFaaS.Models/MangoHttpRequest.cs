@@ -7,7 +7,7 @@ public class MangoHttpRequest
     public required string Path { get; set; }
     public required string Body { get; set; }
     public required Dictionary<string, string> Headers { get; set; }
-    
+    public required string CorrelationId { get; set; }
     
     public string? FunctionId { get; set; }
     public string? FunctionVersion { get; set; }

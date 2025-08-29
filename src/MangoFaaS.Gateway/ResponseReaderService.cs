@@ -5,7 +5,7 @@ using MangoFaaS.Models;
 
 namespace MangoFaaS.Gateway;
 
-public class ResponseReaderService(IConsumer<string, MangoHttpResponse> consumer): BackgroundService
+public class ResponseReaderService(IConsumer<string, MangoHttpResponse> consumer, ILogger<ResponseReaderService> logger): BackgroundService
 {
     private readonly ConcurrentDictionary<string, TaskCompletionSource<MangoHttpResponse>> _pendingRequests = new();
     
@@ -30,9 +30,12 @@ public class ResponseReaderService(IConsumer<string, MangoHttpResponse> consumer
                     {
                         var cr = consumer.Consume(stoppingToken);
                         if (cr?.Message == null) continue;
+                        logger.LogDebug("Consumed message at {TopicPartitionOffset}", cr.TopicPartitionOffset);
 
                         var correlationId = GetHeader(cr.Message.Headers, "correlationId");
                         if (correlationId == null) continue;
+
+                        logger.LogInformation("Received response for correlationId {CorrelationId}", correlationId);
 
                         if (_pendingRequests.TryRemove(correlationId, out var tcs))
                         {

@@ -1,3 +1,5 @@
+using MangoFaaS.Common;
+using MangoFaaS.Common.Services;
 using MangoFaaS.Functions.Models;
 using MangoFaaS.Functions.Services;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +18,10 @@ builder.Services.AddHostedService<ImageBuilderService>();
 builder.Services.AddDbContext<MangoFunctionsDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("functionsdb")
                         ?? throw new InvalidOperationException("Connection string 'functionsdb' not found.")));
+
+// TODO: move to extension method
+builder.Services.AddSingleton<ProcessExecutionService>();
+builder.Services.AddSingleton<Instrumentation>();
 
 var app = builder.Build();
 

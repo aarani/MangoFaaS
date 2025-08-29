@@ -16,6 +16,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Functions", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Authorization", "src\MangoFaaS.Authorization\MangoFaaS.Authorization.csproj", "{FAEC5F7A-67AF-4922-840F-810A87823F38}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.IPAM", "src\MangoFaaS.IPAM\MangoFaaS.IPAM.csproj", "{755120E1-B9D7-4962-B66D-144E2819EA4D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.IPAM.Tests", "tests\MangoFaaS.IPAM.Tests\MangoFaaS.IPAM.Tests.csproj", "{F0E3E4F1-1234-4F6C-9A71-61A1C8E2A9AB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Common", "src\MangoFaaS.Common\MangoFaaS.Common.csproj", "{95AC37FF-1001-4747-98C8-6BED84E3D90A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -125,5 +131,17 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+		{755120E1-B9D7-4962-B66D-144E2819EA4D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{755120E1-B9D7-4962-B66D-144E2819EA4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{755120E1-B9D7-4962-B66D-144E2819EA4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{755120E1-B9D7-4962-B66D-144E2819EA4D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F0E3E4F1-1234-4F6C-9A71-61A1C8E2A9AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F0E3E4F1-1234-4F6C-9A71-61A1C8E2A9AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F0E3E4F1-1234-4F6C-9A71-61A1C8E2A9AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F0E3E4F1-1234-4F6C-9A71-61A1C8E2A9AB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{95AC37FF-1001-4747-98C8-6BED84E3D90A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{95AC37FF-1001-4747-98C8-6BED84E3D90A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{95AC37FF-1001-4747-98C8-6BED84E3D90A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{95AC37FF-1001-4747-98C8-6BED84E3D90A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

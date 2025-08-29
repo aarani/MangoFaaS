@@ -1,6 +1,6 @@
 using System;
 
-namespace MangoFaaS.Firecracker.Node;
+namespace MangoFaaS.Firecracker.Node.Pooling;
 
 public class FirecrackerPoolOptions
 {
@@ -17,11 +17,17 @@ public class FirecrackerPoolOptions
     public int MaxPoolSize { get; set; } = 4;
 
     // How long an idle process is kept alive before being terminated
-    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(5);
+    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(1);
 
     // Max time to wait for process startup
     public int StartupTimeoutSeconds { get; set; } = 15;
-    
+
     // Number of processes to prepare during startup
     public int PrepareCount { get; set; } = 5;
+
+    // IP Subnet for allocation
+    public string IpSubnet { get; set; } = "172.16.0.0/16";
+
+    // Name of the egress interface used for NAT (defaults to eth0 if null)
+    public string EgressInterface { get; set; } = "eth0";
 }
