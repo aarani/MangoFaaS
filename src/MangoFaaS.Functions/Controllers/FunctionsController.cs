@@ -1,6 +1,7 @@
 using MangoFaaS.Functions.Dto;
 using MangoFaaS.Functions.Models;
 using MangoFaaS.Models;
+using MangoFaaS.Models.Enums;
 using Microsoft.AspNetCore.Mvc;
 using Minio;
 
@@ -22,13 +23,20 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
     [HttpPut]
     public async Task<ActionResult<CreateFunctionResponse>> CreateFunction(CreateFunctionRequest request)
     {
+        var runtimeGuid = Guid.Parse(request.Runtime);
+
         var function = new Function()
         {
             Id = Guid.NewGuid(),
             Name = request.Name,
             Description = request.Description,
-            Runtime = request.Runtime
+            Runtime = runtimeGuid.ToString()
         };
+
+        var runtime = await dbContext.Runtimes.FindAsync(runtimeGuid);
+
+        if (runtime is null || !runtime.IsActive) return BadRequest("Function runtime is not active");
+
 
         dbContext.Functions.Add(function);
         await dbContext.SaveChangesAsync();
@@ -50,6 +58,10 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
 
         if (function is null) return NotFound();
 
+        var runtime = await dbContext.Runtimes.FindAsync(Guid.Parse(function.Runtime));
+
+        if (runtime is null || !runtime.IsActive) return BadRequest("Function runtime is not active");
+
         var version = new FunctionVersion()
         {
             Id = versionId,
@@ -57,19 +69,16 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
             Name = request.Name,
             Description = request.Description,
             Entrypoint = request.Entrypoint,
-            FilePath = $"{request.FunctionId}/{versionId}"
+            FilePath = $"{request.FunctionId}/{versionId}",
+            CompressionMethod = CompressionMethod.Deflate
         };
 
         var functionManifest = new MangoFunctionManifest
         {
             FunctionId = request.FunctionId,
             VersionId = versionId,
-            RuntimeImage = function.Runtime switch //TODO: will be moved to database
-            {
-                "dotnet" => Guid.Parse("11111111-1111-1111-1111-111111111111"),
-                "python" => Guid.Parse("22222222-2222-2222-2222-222222222222"),
-                _ => throw new InvalidOperationException("Unsupported runtime")
-            }
+            RuntimeImage = runtime.FileName,
+            RuntimeCompression = runtime.CompressionMethod
         };
 
         using var memStream = new MemoryStream(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(functionManifest));

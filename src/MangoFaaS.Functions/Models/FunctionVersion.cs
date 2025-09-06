@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using MangoFaaS.Models.Enums;
 
 namespace MangoFaaS.Functions.Models
 {
@@ -16,6 +17,8 @@ namespace MangoFaaS.Functions.Models
 
         [MaxLength(500)]
         public required string FilePath { get; set; }
+
+        public CompressionMethod CompressionMethod { get; set; } = CompressionMethod.Tar;
 
         [MaxLength(100)]
         public required string Entrypoint { get; set; }
