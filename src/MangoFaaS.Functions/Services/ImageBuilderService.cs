@@ -4,6 +4,7 @@ using System.Formats.Tar;
 using System.IO.Compression;
 using MangoFaaS.Common.Services;
 using MangoFaaS.Functions.Models;
+using MangoFaaS.Models.Enums;
 using Medallion.Threading.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Minio;
@@ -56,7 +57,6 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
 
         var rawFuncZipFilePath = Path.GetTempFileName();
         var resultOverlayFile = Path.GetTempFileName();
-        var tarResultFile = Path.GetTempFileName();
 
         CancellationTokenSource cts = new(TimeSpan.FromMinutes(10));
 
@@ -88,15 +88,38 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
 
             pipeline.Execute(_ => Directory.Delete($"/mnt/{versionId}", true), CancellationToken.None);
 
-            await processExecutionService.RunProcess("tar", $"-cSvf {tarResultFile} {resultOverlayFile}", CancellationToken.None);
+            Stream? compressedStream = null;
+            try
+            {
+                if (version.CompressionMethod is CompressionMethod.Deflate)
+                {
+                    compressedStream = new MemoryStream();
+                    using (var compressor = new DeflateStream(compressedStream, CompressionMode.Compress, true))
+                    {
+                        using var tarResultFileStream = File.OpenRead(resultOverlayFile);
+                        await tarResultFileStream.CopyToAsync(compressor, stoppingToken);
+                        await compressor.FlushAsync(stoppingToken);
+                    }
+                    compressedStream.Seek(0, SeekOrigin.Begin);
+                }
+                else
+                {
+                    throw new InvalidOperationException("Unknown compression method");
+                }
 
-            _ = await minioClient.PutObjectAsync(new PutObjectArgs()
-                .WithBucket("functions")
-                .WithObject($"{functionId}/{versionId}.ext4.tar")
-                .WithFileName(tarResultFile)
-                .WithContentType("application/x-tar"),
-                stoppingToken
-            );
+                _ = await minioClient.PutObjectAsync(new PutObjectArgs()
+                    .WithBucket("functions")
+                    .WithObject($"{functionId}/{versionId}")
+                    .WithStreamData(compressedStream)
+                    .WithObjectSize(compressedStream.Length)
+                    .WithContentType("application/octet-stream"),
+                    stoppingToken
+                );
+            }
+            finally
+            {
+                compressedStream?.Dispose();
+            }
 
             await minioClient.RemoveObjectAsync(new RemoveObjectArgs()
                 .WithBucket("raw-functions")
@@ -107,7 +130,11 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
             await dbContext
                 .FunctionVersions
                 .Where(x => x.Id == versionId)
-                .ExecuteUpdateAsync(s => s.SetProperty(v => v.State, v => FunctionState.Deployed), stoppingToken);
+                .ExecuteUpdateAsync(version =>
+                    version
+                        .SetProperty(v => v.State, v => FunctionState.Deployed),
+                    stoppingToken
+                );
         }
         catch (Exception ex)
         {
@@ -130,7 +157,6 @@ public class ImageBuilderService(ILogger<ImageBuilderService> logger, IConfigura
             {
                 File.Delete(rawFuncZipFilePath);
                 File.Delete(resultOverlayFile);
-                File.Delete(tarResultFile);
             }
             catch
             {
