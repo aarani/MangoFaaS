@@ -1,5 +1,11 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
+using MangoFaaS.Authorization.Endpoints; // New
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,18 +50,35 @@ using (var scope = app.Services.CreateScope())
 
 #if DEBUG
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
-    await roleManager.CreateAsync(new IdentityRole("Admin"));
+    // Ensure "Admin" role exists
+    if (!await roleManager.RoleExistsAsync("Admin"))
+    {
+        await roleManager.CreateAsync(new IdentityRole("Admin"));
+    }
 
     var userManager = services.GetRequiredService<UserManager<IdentityUser>>();
-    var user = new IdentityUser();
-    await userManager.SetUserNameAsync(user, "afshin@arani.dev");
-    await userManager.SetEmailAsync(user, "afshin@arani.dev");
-    _ = await userManager.CreateAsync(user, "123456Aa!@#");
-    await userManager.AddToRolesAsync(user, ["Admin"]);
+    var user = await userManager.FindByEmailAsync("afshin@arani.dev");
+    if (user == null)
+    {
+        user = new IdentityUser();
+        await userManager.SetUserNameAsync(user, "afshin@arani.dev");
+        await userManager.SetEmailAsync(user, "afshin@arani.dev");
+        var result = await userManager.CreateAsync(user, "123456Aa!@#");
+        if (result.Succeeded)
+        {
+            await userManager.AddToRolesAsync(user, ["Admin"]);
+        }
+    }
 #endif
 }
 
 app.UseHttpsRedirection();
 app.UseCors("MyCors");
-app.MapIdentityApi<IdentityUser>();
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Map custom authentication endpoints
+app.MapAuthEndpoints();
+
+
 await app.RunAsync();

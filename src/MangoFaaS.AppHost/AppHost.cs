@@ -1,4 +1,9 @@
+using System.Security.Cryptography;
 using Aspire.Hosting;
+
+using var rsa = new RSACryptoServiceProvider(1024);
+var privateKeyPem = rsa.ExportRSAPrivateKeyPem();
+var publicKeyPem = rsa.ExportRSAPublicKey();
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -44,6 +49,7 @@ builder.AddProject<Projects.MangoFaaS_Functions>("MangoFaaS-Functions")
 
 builder.AddProject<Projects.MangoFaaS_Authorization>("MangoFaaS-Authorization")
     .WithReference(authdb)
+    .WithEnvironment("Jwt__PrivateKeyPem", privateKeyPem)
     .WaitFor(authdb);
 
 builder.Build().Run();
