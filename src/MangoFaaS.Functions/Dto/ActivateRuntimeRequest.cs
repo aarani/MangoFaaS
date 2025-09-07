@@ -4,5 +4,5 @@ namespace MangoFaaS.Functions.Dto;
 
 public class ActivateRuntimeRequest
 {
-    public CompressionMethod CompressionMethod { get; set; } = CompressionMethod.Tar;
+    public CompressionMethod CompressionMethod { get; set; } = CompressionMethod.Deflate;
 }
