@@ -3,7 +3,7 @@ using Aspire.Hosting;
 
 using var rsa = new RSACryptoServiceProvider(1024);
 var privateKeyPem = rsa.ExportRSAPrivateKeyPem();
-var publicKeyPem = rsa.ExportRSAPublicKey();
+var publicKeyPem = rsa.ExportRSAPublicKeyPem();
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -43,6 +43,7 @@ builder.AddProject<Projects.MangoFaaS_Functions>("MangoFaaS-Functions")
     .WithReference(kafka)
     .WithReference(functionsdb)
     .WithReference(minio)
+    .WithEnvironment("Jwt__PublicKeyPem", publicKeyPem)
     .WaitFor(kafka)
     .WaitFor(functionsdb)
     .WaitFor(minio);
