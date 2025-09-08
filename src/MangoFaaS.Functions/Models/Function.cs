@@ -15,5 +15,7 @@ namespace MangoFaaS.Functions.Models
 
         [MaxLength(100)]
         public required string Runtime { get; set; }
+
+        public string OwnerId { get; set;  }
     }
 }

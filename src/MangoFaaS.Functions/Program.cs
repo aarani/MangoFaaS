@@ -2,7 +2,12 @@ using MangoFaaS.Common;
 using MangoFaaS.Common.Services;
 using MangoFaaS.Functions.Models;
 using MangoFaaS.Functions.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.ServiceDiscovery;
+using Microsoft.IdentityModel.Tokens;
+using System.Security.Cryptography;
+
 using Minio;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,6 +28,41 @@ builder.Services.AddDbContext<MangoFunctionsDbContext>(options =>
 builder.Services.AddSingleton<ProcessExecutionService>();
 builder.Services.AddSingleton<Instrumentation>();
 
+// Authorization
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        var publicKeyPem = builder.Configuration["Jwt:PublicKeyPem"];
+        if (string.IsNullOrEmpty(publicKeyPem))
+        {
+            throw new InvalidOperationException("JWT Public Key PEM not found in configuration['Jwt:PublicKeyPem']. Please ensure it's configured.");
+        }
+
+        var rsa = RSA.Create();
+        try
+        {
+            rsa.ImportFromPem(publicKeyPem);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Failed to import RSA public key from PEM string. Ensure it's a valid RSA public key PEM.", ex);
+        }
+        
+        var rsaSecurityKey = new RsaSecurityKey(rsa);
+
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = rsaSecurityKey,
+            ValidateIssuer = false, 
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization(); // This configures the authorization policies.
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -38,7 +78,7 @@ using (var scope = app.Services.CreateScope())
     await dbContext.Database.MigrateAsync();
 
     var minioClient = services.GetRequiredService<IMinioClient>();
-    
+
     async Task CreateBucketIfDoesNotExist(string bucketName)
     {
         if (!await minioClient.BucketExistsAsync(new Minio.DataModel.Args.BucketExistsArgs().WithBucket(bucketName), CancellationToken.None))
