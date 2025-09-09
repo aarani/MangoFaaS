@@ -3,6 +3,7 @@ using System;
 using MangoFaaS.Functions.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MangoFaaS.Functions.Migrations
 {
     [DbContext(typeof(MangoFunctionsDbContext))]
-    partial class MangoFunctionsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250909071321_FunctionOwner")]
+    partial class FunctionOwner
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
