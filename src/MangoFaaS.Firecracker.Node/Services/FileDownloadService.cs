@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
+using System.IO.Compression;
 using System.Text.Json;
 using MangoFaaS.Common;
 using MangoFaaS.Common.Services;
 using MangoFaaS.Models;
+using MangoFaaS.Models.Enums;
 using Microsoft.Extensions.Options;
 using Microsoft.Kiota.Abstractions;
 using Minio;
@@ -28,9 +30,9 @@ public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger
         if (mangoFunctionManifest is null)
             throw new InvalidOperationException("Minio did not return a valid function manifest");
 
-        var rootfsDownloadTask = GetOrDownload("runtimes", $"{mangoFunctionManifest.RuntimeImage}.ext4.tar", isCompressed: true);
-        var kernelDownloadTask = GetOrDownload("runtimes", $"00000000-0000-0000-0000-000000000000.vmlinux", isCompressed: false);
-        var overlayDownloadTask = GetOrDownload("functions", $"{functionId}/{functionVersion}.ext4.tar", isCompressed: true);
+        var rootfsDownloadTask = GetOrDownload("runtimes", $"{mangoFunctionManifest.RuntimeImage}", mangoFunctionManifest.RuntimeCompression);
+        var kernelDownloadTask = GetOrDownload("runtimes", $"00000000-0000-0000-0000-000000000000.vmlinux", CompressionMethod.None);
+        var overlayDownloadTask = GetOrDownload("functions", $"{functionId}/{functionVersion}", mangoFunctionManifest.OverlayCompression);
         await Task.WhenAll(rootfsDownloadTask, kernelDownloadTask, overlayDownloadTask);
 
         return new FunctionImages(
@@ -40,7 +42,7 @@ public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger
         );
     }
 
-    public async Task<FileInUse> GetOrDownload(string bucketName, string objectName, bool isCompressed = true, CancellationToken token = default)
+    public async Task<FileInUse> GetOrDownload(string bucketName, string objectName, CompressionMethod compressionMethod = CompressionMethod.None, CancellationToken token = default)
     {
         var semaphore = _downloadLocks.GetOrAdd($"{bucketName}/{objectName}", _ => new SemaphoreSlim(1, 1));
         await semaphore.WaitAsync(token);
@@ -52,7 +54,7 @@ public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger
                 return existingFile;
             }
 
-            var downloadedFile = await Download(bucketName, objectName, isCompressed, token);
+            var downloadedFile = await Download(bucketName, objectName, compressionMethod, token);
             return _inUseFiles.AddOrUpdate($"{bucketName}/{objectName}", downloadedFile, (_, _) => downloadedFile);
         }
         finally
@@ -61,7 +63,7 @@ public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger
         }
     }
 
-    public async Task<FileInUse> Download(string bucketName, string objectName, bool isCompressed = true, CancellationToken token = default)
+    public async Task<FileInUse> Download(string bucketName, string objectName, CompressionMethod compressionMethod = CompressionMethod.None, CancellationToken token = default)
     {
 
         var compressedPath =
@@ -72,7 +74,7 @@ public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger
         extractedPath.Directory?.Create();
 
         // If for some reason we have the files but we don't have in memory, let's just delete them, might be corrupted.
-        if (compressedPath.Exists && isCompressed) compressedPath.Delete();
+        if (compressedPath.Exists && compressionMethod is not CompressionMethod.None) compressedPath.Delete();
         if (extractedPath.Exists) extractedPath.Delete();
 
         using var downloadActivity = instrumentation.StartActivity($"Downloading {objectName} from {bucketName}");
@@ -80,36 +82,43 @@ public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger
         await minioClient.GetObjectAsync(new Minio.DataModel.Args.GetObjectArgs()
             .WithBucket(bucketName)
             .WithObject(objectName)
-            .WithFile(isCompressed ? compressedPath.FullName : extractedPath.FullName), token);
+            .WithFile(compressionMethod is not CompressionMethod.None ? compressedPath.FullName : extractedPath.FullName), token);
 
-        var result = isCompressed switch
+        var result = compressionMethod switch
         {
-            true => await Decompress(compressedPath, extractedPath, token),
-            false => extractedPath
+            CompressionMethod.None => extractedPath,
+            _ => await Decompress(compressedPath, extractedPath, compressionMethod, token)
         };
 
-        if (compressedPath.Exists && isCompressed) compressedPath.Delete();
+        if (compressedPath.Exists && compressionMethod is not CompressionMethod.None) compressedPath.Delete();
 
         return ActivatorUtilities.CreateInstance<FileInUse>(serviceProvider, result);
     }
 
-    public async Task<FileInfo> Decompress(FileInfo compressedFile, FileInfo extractedPath, CancellationToken token = default)
+    public async Task<FileInfo> Decompress(FileInfo compressedFile, FileInfo extractedPath, CompressionMethod compressionMethod, CancellationToken token = default)
     {
-        var cachePath =
-            new DirectoryInfo(Path.Combine(options.Value.CacheDirectoryPath, "_toremove", Guid.NewGuid().ToString("N")));
-        cachePath.Create();
+        using var extractActivity = instrumentation.StartActivity($"Extracting {compressedFile.FullName}");
 
-        using (var extractActivity = instrumentation.StartActivity($"Extracting {compressedFile.FullName}"))
+        if (compressionMethod is CompressionMethod.Tar)
         {
+            var cachePath =
+                new DirectoryInfo(Path.Combine(options.Value.CacheDirectoryPath, "_toremove", Guid.NewGuid().ToString("N")));
+            cachePath.Create();
             await processExecutionService.RunProcess("tar", $"-xSvf {compressedFile.FullName} -C {cachePath.FullName}/", token);
+            var filePath = cachePath.EnumerateFiles("*", SearchOption.AllDirectories).FirstOrDefault()
+                ?? throw new InvalidOperationException("No file found in extracted directory");
+
+            filePath.MoveTo(extractedPath.FullName, true);
+
+            cachePath.Delete(true);
         }
-
-        var filePath = cachePath.EnumerateFiles("*", SearchOption.AllDirectories).FirstOrDefault()
-            ?? throw new InvalidOperationException("No file found in extracted directory");
-
-        filePath.MoveTo(extractedPath.FullName, true);
-
-        cachePath.Delete(true);
+        else if (compressionMethod is CompressionMethod.Deflate)
+        {
+            using var compressedFileStream = File.OpenRead(compressedFile.FullName);
+            using var deflateStream = new DeflateStream(compressedFileStream, CompressionMode.Decompress);
+            using var extractedFileStream = File.Create(extractedPath.FullName);
+            await deflateStream.CopyToAsync(extractedFileStream, token);
+        }
 
         return extractedPath;
     }

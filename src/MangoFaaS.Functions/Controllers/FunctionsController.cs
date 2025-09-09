@@ -55,7 +55,7 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
             Id = Guid.NewGuid(),
             Name = request.Name,
             Description = request.Description,
-            OwnerId = currentUserId
+            OwnerId = currentUserId,
             Runtime = runtimeGuid.ToString()
         };
 

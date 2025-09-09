@@ -3,6 +3,7 @@ using System;
 using MangoFaaS.Functions.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MangoFaaS.Functions.Migrations
 {
     [DbContext(typeof(MangoFunctionsDbContext))]
-    partial class MangoFunctionsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250831164531_InitialRuntimeDb")]
+    partial class InitialRuntimeDb
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -38,10 +41,6 @@ namespace MangoFaaS.Functions.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<string>("OwnerId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("Runtime")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -57,12 +56,6 @@ namespace MangoFaaS.Functions.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<string>("CompressionMethod")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("text")
-                        .HasDefaultValue("Deflate");
 
                     b.Property<string>("Description")
                         .IsRequired()

@@ -14,7 +14,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.Services.AddOpenApi();
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
 
 builder.AddMinioClient("minio");
 
@@ -88,6 +91,7 @@ using (var scope = app.Services.CreateScope())
     }
 
     await CreateBucketIfDoesNotExist("runtimes");
+    await CreateBucketIfDoesNotExist("raw-runtimes");
     await CreateBucketIfDoesNotExist("raw-functions");
     await CreateBucketIfDoesNotExist("functions");
     await CreateBucketIfDoesNotExist("function-manifests");
