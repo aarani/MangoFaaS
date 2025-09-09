@@ -28,6 +28,21 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
         return Ok(functions);
     }
 
+    [HttpGet("versions")]
+    public IActionResult GetFunctionVersions()
+    {
+        var currentUserId = GetCurrentUserId();
+        var functionVersions = dbContext.FunctionVersions
+            .Join(dbContext.Functions,
+                  version => version.FunctionId,
+                  function => function.Id,
+                  (version, function) => new { Version = version, Function = function })
+            .Where(joined => joined.Function.OwnerId == currentUserId)
+            .Select(joined => joined.Version)
+            .ToList();
+        return Ok(functionVersions);
+    }
+
     [HttpPut]
     public async Task<ActionResult<CreateFunctionResponse>> CreateFunction(CreateFunctionRequest request)
     {
