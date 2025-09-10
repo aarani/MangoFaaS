@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Minio;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 
 namespace MangoFaaS.Functions.Controllers;
 
@@ -25,7 +26,7 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
     public IActionResult GetFunctions()
     {
         var currentUserId = GetCurrentUserId();
-        var functions = dbContext.Functions.Where(f => f.OwnerId == currentUserId).ToList();
+        var functions = dbContext.Functions.AsNoTracking().Where(f => f.OwnerId == currentUserId).ToList();
         return Ok(functions);
     }
 
@@ -34,12 +35,8 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
     {
         var currentUserId = GetCurrentUserId();
         var functionVersions = dbContext.FunctionVersions
-            .Join(dbContext.Functions,
-                  version => version.FunctionId,
-                  function => function.Id,
-                  (version, function) => new { Version = version, Function = function })
-            .Where(joined => joined.Function.OwnerId == currentUserId)
-            .Select(joined => joined.Version)
+            .Include(fv => fv.Function)
+            .Where(fv => fv.Function.OwnerId == currentUserId)
             .ToList();
         return Ok(functionVersions);
     }
