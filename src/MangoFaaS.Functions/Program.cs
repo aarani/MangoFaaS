@@ -4,7 +4,6 @@ using MangoFaaS.Functions.Models;
 using MangoFaaS.Functions.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.ServiceDiscovery;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Cryptography;
 
@@ -32,6 +31,8 @@ builder.Services.AddSingleton<ProcessExecutionService>();
 builder.Services.AddSingleton<Instrumentation>();
 
 // Authorization
+builder.Services.AddAuthorization();
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -53,18 +54,18 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         
         var rsaSecurityKey = new RsaSecurityKey(rsa);
 
+        options.Authority = null; // No authority since we're using self-contained tokens
+        options.Audience = null;  // No specific audience
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = rsaSecurityKey,
             ValidateIssuer = false, 
             ValidateAudience = false,
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero
+            ValidateLifetime = true
         };
     });
-
-builder.Services.AddAuthorization(); // This configures the authorization policies.
 
 var app = builder.Build();
 

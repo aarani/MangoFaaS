@@ -15,11 +15,12 @@ namespace MangoFaaS.Functions.Controllers;
 public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient minioClient) : ControllerBase
 {
     private const int DefaultPresignedUrlExpirySeconds = 3600;
-    private string GetCurrentUserId()
-    {
-        return User.FindFirstValue(ClaimTypes.NameIdentifier) 
-               ?? throw new InvalidOperationException("User ID claim (sub) not found in the JWT token.");
-    }
+    private string GetCurrentUserId() =>
+        User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new InvalidOperationException("User ID claim (sub) not found in the JWT token.");
+
+
+    private bool IsAdmin() => User.IsInRole("Admin");
 
     [HttpGet]
     [Authorize]
@@ -28,7 +29,12 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
         var currentUserId = GetCurrentUserId();
         if (currentUserId is null) return Unauthorized();
 
-        var functions = await dbContext.Functions.AsNoTracking().Where(f => User.IsInRole("admin") || f.OwnerId == currentUserId).ToListAsync();
+        var functions =
+            await dbContext
+                .Functions
+                .AsNoTracking()
+                .Where(f => IsAdmin() || f.OwnerId == currentUserId)
+                .ToListAsync();
         return Ok(functions);
     }
 
@@ -39,7 +45,7 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
         var currentUserId = GetCurrentUserId();
         var function = await dbContext.Functions.FindAsync(id);
         if (function is null) return NotFound();
-        if (function.OwnerId != currentUserId && !User.IsInRole("admin")) return Forbid();
+        if (function.OwnerId != currentUserId && !IsAdmin()) return Forbid();
         var functionVersions = await dbContext.FunctionVersions
             .Where(fv => fv.FunctionId == id)
             .ToListAsync();

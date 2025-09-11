@@ -20,7 +20,6 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.8" />
-    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.14.0" />
     <ProjectReference Include="..\MangoFaaS.Models\MangoFaaS.Models.csproj" />
     <ProjectReference Include="..\MangoFaaS.ServiceDefaults\MangoFaaS.ServiceDefaults.csproj" />
     <ProjectReference Include="..\MangoFaaS.Common\MangoFaaS.Common.csproj" />

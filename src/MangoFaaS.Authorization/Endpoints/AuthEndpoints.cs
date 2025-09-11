@@ -33,9 +33,9 @@ public static class AuthEndpoints
 
                 var claims = new List<Claim>
                 {
-                    new Claim(ClaimTypes.NameIdentifier, user.Id),
-                    new Claim(ClaimTypes.Email, user.Email!),
-                    new Claim(ClaimTypes.Name, user.UserName!)
+                    new(ClaimTypes.NameIdentifier, user.Id),
+                    new(ClaimTypes.Email, user.Email!),
+                    new(ClaimTypes.Name, user.UserName!)
                 };
 
                 foreach (var role in roles)
@@ -46,10 +46,15 @@ public static class AuthEndpoints
                 var privateKeyPem = configuration["Jwt:PrivateKeyPem"]
                     ?? throw new InvalidOperationException("JWT Private Key 'Jwt:PrivateKeyPem' not found in configuration.");
 
-                var rsa = RSA.Create();
+                using var rsa = RSA.Create();
                 rsa.ImportFromPem(privateKeyPem);
 
-                var securityKey = new RsaSecurityKey(rsa);
+                var securityKey =
+                    new RsaSecurityKey(rsa)
+                    {
+                        CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false }
+                    };
+
                 var creds = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
 
                 var token = new JwtSecurityToken(
@@ -60,7 +65,13 @@ public static class AuthEndpoints
                     signingCredentials: creds
                 );
 
-                return Results.Ok(new LoginResponse(new JwtSecurityTokenHandler().WriteToken(token)));
+                var loginResponse =
+                    new LoginResponse(
+                        new JwtSecurityTokenHandler()
+                            .WriteToken(token)
+                    );
+
+                return Results.Ok(loginResponse);
             }
 
             return Results.Unauthorized();
