@@ -46,7 +46,7 @@ public static class AuthEndpoints
                 var privateKeyPem = configuration["Jwt:PrivateKeyPem"]
                     ?? throw new InvalidOperationException("JWT Private Key 'Jwt:PrivateKeyPem' not found in configuration.");
 
-                using var rsa = RSA.Create();
+                var rsa = RSA.Create();
                 rsa.ImportFromPem(privateKeyPem);
 
                 var securityKey = new RsaSecurityKey(rsa);
