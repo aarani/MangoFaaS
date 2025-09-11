@@ -12,7 +12,6 @@ namespace MangoFaaS.Functions.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
 public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient minioClient) : ControllerBase
 {
     private const int DefaultPresignedUrlExpirySeconds = 3600;
@@ -23,25 +22,30 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
     }
 
     [HttpGet]
+    [Authorize]
     public IActionResult GetFunctions()
     {
         var currentUserId = GetCurrentUserId();
-        var functions = dbContext.Functions.AsNoTracking().Where(f => f.OwnerId == currentUserId).ToList();
+        if (currentUserId is null) return Unauthorized();
+
+        var functions = dbContext.Functions.AsNoTracking().Where(f => User.IsInRole("admin") || f.OwnerId == currentUserId).ToList();
         return Ok(functions);
     }
 
     [HttpGet("versions")]
+    [Authorize]
     public IActionResult GetFunctionVersions()
     {
         var currentUserId = GetCurrentUserId();
         var functionVersions = dbContext.FunctionVersions
+            .Where(fv => User.IsInRole("admin") || fv.Function.OwnerId == currentUserId)
             .Include(fv => fv.Function)
-            .Where(fv => fv.Function.OwnerId == currentUserId)
             .ToList();
         return Ok(functionVersions);
     }
 
     [HttpPut]
+    [Authorize]
     public async Task<ActionResult<CreateFunctionResponse>> CreateFunction(CreateFunctionRequest request)
     {
         var currentUserId = GetCurrentUserId();
@@ -73,6 +77,7 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
     }
 
     [HttpPut("version")]
+    [Authorize]
     public async Task<ActionResult<CreateFunctionVersionResponse>> CreateFunctionVersion(CreateFunctionVersionRequest request)
     {
         var currentUserId = GetCurrentUserId();
@@ -83,7 +88,7 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
 
         if (function.OwnerId != currentUserId)
         {
-            return Forbid(); 
+            return Forbid();
         }
 
         var versionId = Guid.NewGuid();
