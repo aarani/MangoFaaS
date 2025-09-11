@@ -44,7 +44,7 @@ builder.AddProject<Projects.MangoFaaS_Functions>("MangoFaaS-Functions")
     .WithReference(functionsdb)
     .WithReference(minio)
     .WithEnvironment("Jwt__PublicKeyPem", publicKeyPem)
-    .WaitFor(kafka)
+    .WaitFor(kafka) 
     .WaitFor(functionsdb)
     .WaitFor(minio);
 

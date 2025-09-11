@@ -23,24 +23,26 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
 
     [HttpGet]
     [Authorize]
-    public IActionResult GetFunctions()
+    public async Task<IActionResult> GetFunctions()
     {
         var currentUserId = GetCurrentUserId();
         if (currentUserId is null) return Unauthorized();
 
-        var functions = dbContext.Functions.AsNoTracking().Where(f => User.IsInRole("admin") || f.OwnerId == currentUserId).ToList();
+        var functions = await dbContext.Functions.AsNoTracking().Where(f => User.IsInRole("admin") || f.OwnerId == currentUserId).ToListAsync();
         return Ok(functions);
     }
 
-    [HttpGet("versions")]
+    [HttpGet("{id:required}/versions")]
     [Authorize]
-    public IActionResult GetFunctionVersions()
+    public async Task<IActionResult> GetFunctionVersions(Guid id)
     {
         var currentUserId = GetCurrentUserId();
-        var functionVersions = dbContext.FunctionVersions
-            .Where(fv => User.IsInRole("admin") || fv.Function.OwnerId == currentUserId)
-            .Include(fv => fv.Function)
-            .ToList();
+        var function = await dbContext.Functions.FindAsync(id);
+        if (function is null) return NotFound();
+        if (function.OwnerId != currentUserId && !User.IsInRole("admin")) return Forbid();
+        var functionVersions = await dbContext.FunctionVersions
+            .Where(fv => fv.FunctionId == id)
+            .ToListAsync();
         return Ok(functionVersions);
     }
 
