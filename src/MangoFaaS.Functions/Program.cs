@@ -102,4 +102,7 @@ app.UseHttpsRedirection();
 
 app.MapControllers();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 await app.RunAsync();
