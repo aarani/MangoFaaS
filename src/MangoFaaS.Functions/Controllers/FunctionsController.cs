@@ -4,6 +4,9 @@ using MangoFaaS.Models;
 using MangoFaaS.Models.Enums;
 using Microsoft.AspNetCore.Mvc;
 using Minio;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 
 namespace MangoFaaS.Functions.Controllers;
 
@@ -12,17 +15,48 @@ namespace MangoFaaS.Functions.Controllers;
 public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient minioClient) : ControllerBase
 {
     private const int DefaultPresignedUrlExpirySeconds = 3600;
+    private string GetCurrentUserId() =>
+        User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new InvalidOperationException("User ID claim (sub) not found in the JWT token.");
+
+
+    private bool IsAdmin() => User.IsInRole("Admin");
 
     [HttpGet]
-    public IActionResult GetFunctions()
+    [Authorize]
+    public async Task<IActionResult> GetFunctions()
     {
-        //TODO: Logic to retrieve functions
-        return Ok();
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId is null) return Unauthorized();
+
+        var functions =
+            await dbContext
+                .Functions
+                .AsNoTracking()
+                .Where(f => IsAdmin() || f.OwnerId == currentUserId)
+                .ToListAsync();
+        return Ok(functions);
+    }
+
+    [HttpGet("{id:required}/versions")]
+    [Authorize]
+    public async Task<IActionResult> GetFunctionVersions(Guid id)
+    {
+        var currentUserId = GetCurrentUserId();
+        var function = await dbContext.Functions.FindAsync(id);
+        if (function is null) return NotFound();
+        if (function.OwnerId != currentUserId && !IsAdmin()) return Forbid();
+        var functionVersions = await dbContext.FunctionVersions
+            .Where(fv => fv.FunctionId == id)
+            .ToListAsync();
+        return Ok(functionVersions);
     }
 
     [HttpPut]
+    [Authorize]
     public async Task<ActionResult<CreateFunctionResponse>> CreateFunction(CreateFunctionRequest request)
     {
+        var currentUserId = GetCurrentUserId();
         var runtimeGuid = Guid.Parse(request.Runtime);
 
         var function = new Function()
@@ -30,6 +64,7 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
             Id = Guid.NewGuid(),
             Name = request.Name,
             Description = request.Description,
+            OwnerId = currentUserId,
             Runtime = runtimeGuid.ToString()
         };
 
@@ -50,14 +85,21 @@ public class FunctionsController(MangoFunctionsDbContext dbContext, IMinioClient
     }
 
     [HttpPut("version")]
+    [Authorize]
     public async Task<ActionResult<CreateFunctionVersionResponse>> CreateFunctionVersion(CreateFunctionVersionRequest request)
     {
-        var versionId = Guid.NewGuid();
+        var currentUserId = GetCurrentUserId();
 
         var function = await dbContext.Functions.FindAsync(request.FunctionId);
 
         if (function is null) return NotFound();
 
+        if (function.OwnerId != currentUserId)
+        {
+            return Forbid();
+        }
+
+        var versionId = Guid.NewGuid();
         var runtime = await dbContext.Runtimes.FindAsync(Guid.Parse(function.Runtime));
 
         if (runtime is null || !runtime.IsActive) return BadRequest("Function runtime is not active");
