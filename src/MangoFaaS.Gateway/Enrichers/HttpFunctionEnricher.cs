@@ -8,10 +8,14 @@ using System.Text.RegularExpressions;
 
 namespace MangoFaaS.Gateway.Enrichers;
 
-public class FunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext dbContext) : IEnricher
+public class HttpFunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext dbContext) : IEnricher
 {
-    public async Task EnrichAsync(MangoHttpRequest request)
+    public async Task EnrichAsync(Invocation invocation)
     {
+        if (!CanEnrich(invocation)) return;
+
+        var request = invocation.HttpRequest;
+
         // Remove query string for route matching
         var requestPath = request.Path;
         var qIndex = requestPath.IndexOf('?');
@@ -64,8 +68,8 @@ public class FunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext dbCon
         
         if (winningRoute != null)
         {
-            request.FunctionId = winningRoute.FunctionId;
-            request.FunctionVersion = winningRoute.FunctionVersion;
+            invocation.FunctionId = winningRoute.FunctionId;
+            invocation.FunctionVersion = winningRoute.FunctionVersion;
         }
     }
     
@@ -90,5 +94,10 @@ public class FunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext dbCon
             default:
                 return (false, 0, 0);
         }
+    }
+
+    public bool CanEnrich(Invocation invocation)
+    {
+        return invocation.HttpRequest is not null;
     }
 }

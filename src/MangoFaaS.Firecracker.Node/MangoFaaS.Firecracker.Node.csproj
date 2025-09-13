@@ -11,6 +11,7 @@
     <ItemGroup>
         <PackageReference Include="Aspire.Confluent.Kafka" Version="9.4.1" />
         <PackageReference Include="CommunityToolkit.Aspire.Minio.Client" Version="9.7.0" />
+        <PackageReference Include="Google.Protobuf" Version="3.32.1" />
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     </ItemGroup>
 

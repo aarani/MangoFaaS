@@ -1,6 +1,7 @@
 using System.Text;
 using Aspire.Confluent.Kafka;
 using Confluent.Kafka;
+using Google.Protobuf.Collections;
 using MangoFaaS.Common.Helpers;
 using MangoFaaS.Gateway.Enrichers;
 using MangoFaaS.Gateway.Models;
@@ -23,19 +24,19 @@ public static class Program
 
         builder.AddServiceDefaults();
         
-        builder.AddKafkaProducer<string, MangoHttpRequest>("kafka", consumerBuilder =>
+        builder.AddKafkaProducer<string, Invocation>("kafka", consumerBuilder =>
         {
-            consumerBuilder.SetValueSerializer(new SystemTextJsonSerializer<MangoHttpRequest>());
+            consumerBuilder.SetValueSerializer(new ProtobufSerializer<Invocation>());
         });
         
-        builder.AddKafkaConsumer<string, MangoHttpResponse>("kafka", (KafkaConsumerSettings settings)  =>
+        builder.AddKafkaConsumer<string, InvocationResponse>("kafka", (KafkaConsumerSettings settings)  =>
         {
             settings.Config.GroupId = "gateway";
             settings.Config.EnableAutoCommit = true;
-            settings.Config.AutoOffsetReset = AutoOffsetReset.Earliest;
+            settings.Config.AutoOffsetReset = AutoOffsetReset.Latest;
         }, consumerBuilder =>
         {
-            consumerBuilder.SetValueDeserializer(new SystemTextJsonDeserializer<MangoHttpResponse>());
+            consumerBuilder.SetValueDeserializer(new ProtobufDeserializer<InvocationResponse>());
         });
         
         builder.Services.AddMemoryCache();
@@ -47,7 +48,7 @@ public static class Program
             options.UseNpgsql(builder.Configuration.GetConnectionString("gatewaydb")
                               ?? throw new InvalidOperationException("Connection string 'gatewaydb' not found.")));
 
-        builder.Services.AddTransient<IEnricher, FunctionEnricher>();
+        builder.Services.AddTransient<IEnricher, HttpFunctionEnricher>();
         
         var app = builder.Build();
         
@@ -70,59 +71,68 @@ public static class Program
     {
         var correlationId = Guid.NewGuid().ToString("N");
 
-        var serviceProvider = context.RequestServices; 
-        var producer = serviceProvider.GetRequiredService<IProducer<string, MangoHttpRequest>>();
+        var serviceProvider = context.RequestServices;
+        var producer = serviceProvider.GetRequiredService<IProducer<string, Invocation>>();
         var responseReader = serviceProvider.GetRequiredService<ResponseReaderService>();
-        
+
         var headers = new Headers
         {
             new Header("correlationId", Encoding.UTF8.GetBytes(correlationId)),
             new Header("replyTo", Encoding.UTF8.GetBytes(ReplyToTopic))
         };
-        
+
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         cts.CancelAfter(TimeSpan.FromMinutes(1));
-        
-        var request = new MangoHttpRequest()
+
+        var invocation = new Invocation();
+        invocation.CorrelationId = correlationId;
+        invocation.HttpRequest = new HttpRequestTrigger
         {
             Method = context.Request.Method,
             Host = context.Request.Host.Host.ToLower(),
             Path = context.Request.Path + context.Request.QueryString,
             Body = await new StreamReader(context.Request.Body).ReadToEndAsync(cts.Token),
-            Headers = context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()),
-            CorrelationId = correlationId
         };
-        
+        invocation.HttpRequest.Headers.Add(context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()));
+
         var enrichers = serviceProvider.GetServices<IEnricher>();
         foreach (var enricher in enrichers)
         {
-            await enricher.EnrichAsync(request);
+            if (enricher.CanEnrich(invocation))
+                await enricher.EnrichAsync(invocation);
         }
 
-        if (string.IsNullOrWhiteSpace(request.FunctionId) || string.IsNullOrWhiteSpace(request.FunctionVersion))
+        if (string.IsNullOrWhiteSpace(invocation.FunctionId) || string.IsNullOrWhiteSpace(invocation.FunctionVersion))
         {
             context.Response.StatusCode = 404;
             return;
         }
 
-        await producer.ProduceAsync("requests", new Message<string, MangoHttpRequest>
+        await producer.ProduceAsync("requests", new Message<string, Invocation>
         {
-            Key = $"{request.FunctionId}:{request.FunctionVersion}",
-            Value = request,
+            Key = $"{invocation.FunctionId}:{invocation.FunctionVersion}",
+            Value = invocation,
             Headers = headers
         }, cts.Token);
-        
-        var tcs = new TaskCompletionSource<MangoHttpResponse>();
+
+        var tcs = new TaskCompletionSource<InvocationResponse>();
         // Add the request to the pending requests dictionary and remove it when the token is cancelled
         responseReader.AddRequest(correlationId, tcs);
         cts.Token.Register(() => responseReader.RemoveRequest(correlationId));
-        
+
         var result = await tcs.Task.WaitAsync(cts.Token);
-        context.Response.StatusCode = result.StatusCode;
-        foreach (var header in result.Headers)
+        if (result.HttpResponse is null)
+        {
+            context.Response.StatusCode = 500;
+            return;
+        }
+
+        context.Response.StatusCode = result.HttpResponse.StatusCode;
+        foreach (var header in result.HttpResponse.Headers)
         {
             context.Response.Headers[header.Key] = header.Value;
         }
-        await context.Response.WriteAsync(result.Body, cancellationToken: cts.Token);
+
+        await context.Response.Body.WriteAsync(result.HttpResponse.Body.ToByteArray());
     }
 }
