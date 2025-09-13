@@ -4,5 +4,7 @@ namespace MangoFaaS.Gateway.Enrichers;
 
 public interface IEnricher
 {
-    Task EnrichAsync(MangoHttpRequest request);
+    Task EnrichAsync(Invocation invocation);
+
+    bool CanEnrich(Invocation invocation);
 }
