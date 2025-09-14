@@ -27,7 +27,7 @@ public class PendingRequestStore(ILogger<PendingRequestStore> logger)
     }
 
     // Called by a VM / handler polling for next request for a function
-    public async ValueTask<(MangoHttpRequest Request, string CorrelationId)> DequeueAsync(string functionId, CancellationToken ct)
+    public async ValueTask<(Invocation Request, string CorrelationId)> DequeueAsync(string functionId, CancellationToken ct)
     {
         var channel = GetChannel(functionId);
         var pending = await channel.Reader.ReadAsync(ct).ConfigureAwait(false);
@@ -35,7 +35,7 @@ public class PendingRequestStore(ILogger<PendingRequestStore> logger)
     }
 
     // Called when VM finishes processing and has a response
-    public bool TryComplete(string correlationId, MangoHttpResponse response)
+    public bool TryComplete(string correlationId, InvocationResponse response)
     {
         logger.LogInformation("Attempting to complete processing for correlationId {CorrelationId}", correlationId);
         if (!_inFlightByCorrelation.TryRemove(correlationId, out var pending))

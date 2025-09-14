@@ -18,19 +18,19 @@ builder.AddMinioClient("minio");
 
 await KafkaHelpers.CreateTopicAsync(builder, "kafka", "requests", numPartitions: 3, replicationFactor: 1);
 
-builder.AddKafkaConsumer<string, MangoHttpRequest>("kafka", settings  =>
+builder.AddKafkaConsumer<string, Invocation>("kafka", settings  =>
 {
     settings.Config.GroupId = "firecracker-node";
     settings.Config.EnableAutoCommit = false;
-    settings.Config.AutoOffsetReset = AutoOffsetReset.Earliest;
+    settings.Config.AutoOffsetReset = AutoOffsetReset.Latest;
 }, consumerBuilder =>
 {
-    consumerBuilder.SetValueDeserializer(new SystemTextJsonDeserializer<MangoHttpRequest>());
+    consumerBuilder.SetValueDeserializer(new ProtobufDeserializer<Invocation>());
 });
 
-builder.AddKafkaProducer<string, MangoHttpResponse>("kafka", consumerBuilder =>
+builder.AddKafkaProducer<string, InvocationResponse>("kafka", consumerBuilder =>
 {
-    consumerBuilder.SetValueSerializer(new SystemTextJsonSerializer<MangoHttpResponse>());
+    consumerBuilder.SetValueSerializer(new ProtobufSerializer<InvocationResponse>());
 });
 
 // Configure Firecracker pool options from configuration

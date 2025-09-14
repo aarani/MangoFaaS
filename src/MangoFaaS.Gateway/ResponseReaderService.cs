@@ -5,11 +5,11 @@ using MangoFaaS.Models;
 
 namespace MangoFaaS.Gateway;
 
-public class ResponseReaderService(IConsumer<string, MangoHttpResponse> consumer, ILogger<ResponseReaderService> logger): BackgroundService
+public class ResponseReaderService(IConsumer<string, InvocationResponse> consumer, ILogger<ResponseReaderService> logger): BackgroundService
 {
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<MangoHttpResponse>> _pendingRequests = new();
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<InvocationResponse>> _pendingRequests = new();
     
-    public void AddRequest(string correlationId, TaskCompletionSource<MangoHttpResponse> tcs)
+    public void AddRequest(string correlationId, TaskCompletionSource<InvocationResponse> tcs)
     {
         _pendingRequests[correlationId] = tcs;
     }

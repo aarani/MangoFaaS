@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Text.Json;
+using Google.Protobuf;
 using MangoFaaS.Firecracker.Node.Services;
 using MangoFaaS.Firecracker.Node.Store;
 using MangoFaaS.Models;
@@ -25,8 +27,11 @@ public class PendingRequestServerApplication(string functionIdWithVersion, Pendi
         {
             var (Request, _) = await pendingRequestStore.DequeueAsync(functionIdWithVersion, context.RequestAborted);
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsJsonAsync(Request);
+            context.Response.ContentType = "application/protobuf";
+            if (Request is null) return;
+            using var memStream = new MemoryStream();
+            Request.WriteTo(memStream);
+            await context.Response.Body.WriteAsync(memStream.ToArray());
         }
         else if (context.Request.Path.StartsWithSegments("/response"))
         {
@@ -34,23 +39,25 @@ public class PendingRequestServerApplication(string functionIdWithVersion, Pendi
 
             logger.LogInformation("Received response for correlationId {CorrelationId}", correlationId);
 
-            using var streamReader = new StreamReader(context.Request.Body);
-            var json = await streamReader.ReadToEndAsync();
-
-            MangoHttpResponse? response;
+            InvocationResponse response = null!;
 
             try
             {
-                response = JsonSerializer.Deserialize<MangoHttpResponse>(json)
-                    ?? new MangoHttpResponse() { StatusCode = 500, Body = "Invalid response payload", Headers = [] };
+                using MemoryStream memStream = new();
+                await context.Request.Body.CopyToAsync(memStream);
+                response = InvocationResponse.Parser.ParseFrom(memStream.ToArray());
             }
-            catch
+            catch (Exception e)
             {
-                logger.LogWarning("Failed to deserialize response for correlationId {CorrelationId}, body = {Body}", correlationId, json);
-                response = new MangoHttpResponse() { StatusCode = 500, Body = "Invalid response payload", Headers = [] };
+                logger.LogWarning("Failed to deserialize response for correlationId {CorrelationId} {e}", correlationId, e);
+                response = new InvocationResponse
+                {
+                    CorrelationId = correlationId,
+                    HttpResponse = null!
+                };
             }
-            
-            if (pendingRequestStore.TryComplete(correlationId, response))
+
+            if (pendingRequestStore.TryComplete(response.CorrelationId ?? correlationId, response))
             {
                 context.Response.StatusCode = 204;
             }
