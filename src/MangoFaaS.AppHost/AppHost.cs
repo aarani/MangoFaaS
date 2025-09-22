@@ -29,6 +29,7 @@ var authdb = postgres.AddDatabase("authdb");
 builder.AddProject<Projects.MangoFaaS_Gateway>("MangoFaaS-Gateway")
     .WithReference(kafka)
     .WithReference(gatewaydb)
+    .WithEnvironment("Jwt__PublicKeyPem", publicKeyPem)
     .WaitFor(kafka)
     .WaitFor(gatewaydb);
 
@@ -43,7 +44,7 @@ builder.AddProject<Projects.MangoFaaS_Functions>("MangoFaaS-Functions")
     .WithReference(functionsdb)
     .WithReference(minio)
     .WithEnvironment("Jwt__PublicKeyPem", publicKeyPem)
-    .WaitFor(kafka) 
+    .WaitFor(kafka)
     .WaitFor(functionsdb)
     .WaitFor(minio);
 
