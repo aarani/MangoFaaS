@@ -19,7 +19,7 @@ public class RoutesController(MangoGatewayDbContext dbContext) : ControllerBase
         return Ok(routes);
     }
 
-    [HttpGet("{id: required}")]
+    [HttpGet("{id:required}")]
     [Authorize]
     public async Task<IActionResult> GetRoute(string id)
     {
@@ -56,7 +56,7 @@ public class RoutesController(MangoGatewayDbContext dbContext) : ControllerBase
         return Created(string.Empty, route.Id);
     }
 
-    [HttpPut("{id: required}")]
+    [HttpPut("{id:required}")]
     [Authorize]
     public async Task<IActionResult> UpdateRoute(string id, UpdateRouteRequest request)
     {
@@ -85,7 +85,7 @@ public class RoutesController(MangoGatewayDbContext dbContext) : ControllerBase
         return Created(string.Empty, updatedRoute.Id);
     }
 
-    [HttpDelete("{id: required}")]
+    [HttpDelete("{id:required}")]
     [Authorize]
     public async Task<IActionResult> DeleteRoute(string id)
     {

@@ -8,13 +8,18 @@ using MangoFaaS.Gateway.Models;
 using MangoFaaS.Models;
 using MangoFaaS.Models.Helpers;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.OpenApi;
+using Swashbuckle.AspNetCore;
 
 namespace MangoFaaS.Gateway;
 
 public static class Program
 {
     public static readonly string ReplyToTopic = $"rpc.replies.{Guid.NewGuid():N}";
-    
+
     public static async Task Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
@@ -23,13 +28,13 @@ public static class Program
         await KafkaHelpers.CreateTopicAsync(builder, "kafka", ReplyToTopic, numPartitions: 1, replicationFactor: 1);
 
         builder.AddServiceDefaults();
-        
+
         builder.AddKafkaProducer<string, Invocation>("kafka", consumerBuilder =>
         {
             consumerBuilder.SetValueSerializer(new ProtobufSerializer<Invocation>());
         });
-        
-        builder.AddKafkaConsumer<string, InvocationResponse>("kafka", (KafkaConsumerSettings settings)  =>
+
+        builder.AddKafkaConsumer<string, InvocationResponse>("kafka", (KafkaConsumerSettings settings) =>
         {
             settings.Config.GroupId = "gateway";
             settings.Config.EnableAutoCommit = true;
@@ -38,9 +43,9 @@ public static class Program
         {
             consumerBuilder.SetValueDeserializer(new ProtobufDeserializer<InvocationResponse>());
         });
-        
+
         builder.Services.AddMemoryCache();
-        
+
         builder.Services.AddSingleton<ResponseReaderService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<ResponseReaderService>());
 
@@ -49,21 +54,85 @@ public static class Program
                               ?? throw new InvalidOperationException("Connection string 'gatewaydb' not found.")));
 
         builder.Services.AddTransient<IEnricher, HttpFunctionEnricher>();
-        
+
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen();
+
+        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            options.Events = new JwtBearerEvents
+            {
+                OnAuthenticationFailed = context =>
+                {
+                    Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+                    return Task.CompletedTask;
+                },
+                OnTokenValidated = context =>
+                {
+                    Console.WriteLine("Token validated successfully.");
+                    return Task.CompletedTask;
+                }
+            };
+            var publicKeyPem = builder.Configuration["Jwt:PublicKeyPem"];
+            if (string.IsNullOrEmpty(publicKeyPem))
+            {
+                throw new InvalidOperationException("JWT Public Key PEM not found in configuration['Jwt:PublicKeyPem']. Please ensure it's configured.");
+            }
+
+            var rsa = RSA.Create();
+            try
+            {
+                rsa.ImportFromPem(publicKeyPem);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("Failed to import RSA public key from PEM string. Ensure it's a valid RSA public key PEM.", ex);
+            }
+
+            var rsaSecurityKey = new RsaSecurityKey(rsa);
+
+            options.Authority = null; // No authority since we're using self-contained tokens
+            options.Audience = null;  // No specific audience
+
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = rsaSecurityKey,
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                ValidateLifetime = true
+            };
+        });
+        builder.Services.AddAuthorization();
+
+        builder.Services.AddControllers();
+
         var app = builder.Build();
-        
+
         using (var scope = app.Services.CreateScope())
         {
             var services = scope.ServiceProvider;
-            
+
             var dbContext = services.GetRequiredService<MangoGatewayDbContext>();
             await dbContext.Database.MigrateAsync();
         }
-        
+
         app.UseHttpsRedirection();
 
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseSwagger();
+            app.UseSwaggerUI();
+        }
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.MapControllers();
+
         app.Map("/{**path}", HandleRequest);
-        
+
         await app.RunAsync();
     }
 
@@ -107,6 +176,7 @@ public static class Program
             context.Response.StatusCode = 404;
             return;
         }
+
 
         await producer.ProduceAsync("requests", new Message<string, Invocation>
         {
