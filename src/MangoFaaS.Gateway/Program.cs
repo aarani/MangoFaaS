@@ -1,7 +1,6 @@
 using System.Text;
 using Aspire.Confluent.Kafka;
 using Confluent.Kafka;
-using Google.Protobuf.Collections;
 using MangoFaaS.Common.Helpers;
 using MangoFaaS.Gateway.Enrichers;
 using MangoFaaS.Gateway.Models;
@@ -67,13 +66,12 @@ public static class Program
         await app.RunAsync();
     }
 
-    private static async Task HandleRequest(HttpContext context)
+    private static async Task HandleRequest(HttpContext context,
+        IProducer<string, Invocation> producer,
+        ResponseReaderService responseReaderService,
+        IEnumerable<IEnricher> enrichers)
     {
         var correlationId = Guid.NewGuid().ToString("N");
-
-        var serviceProvider = context.RequestServices;
-        var producer = serviceProvider.GetRequiredService<IProducer<string, Invocation>>();
-        var responseReader = serviceProvider.GetRequiredService<ResponseReaderService>();
 
         var headers = new Headers
         {
@@ -83,19 +81,27 @@ public static class Program
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         cts.CancelAfter(TimeSpan.FromMinutes(1));
-
-        var invocation = new Invocation();
-        invocation.CorrelationId = correlationId;
-        invocation.HttpRequest = new HttpRequestTrigger
+        using var bodyReader = new StreamReader(context.Request.Body);
+        var invocation = new Invocation
         {
-            Method = context.Request.Method,
-            Host = context.Request.Host.Host.ToLower(),
-            Path = context.Request.Path + context.Request.QueryString,
-            Body = await new StreamReader(context.Request.Body).ReadToEndAsync(cts.Token),
+            CorrelationId = correlationId,
+            HttpRequest = new HttpRequestTrigger
+            {
+                Method = context.Request.Method,
+                Host = context.Request.Host.Host.ToLower(),
+                Path = context.Request.Path,
+                QueryStrings = context.Request.QueryString.ToString(),
+                Body = await bodyReader.ReadToEndAsync(cts.Token),
+            }
         };
-        invocation.HttpRequest.Headers.Add(context.Request.Headers.ToDictionary(h => h.Key, h => h.Value.ToString()));
+        invocation.HttpRequest.Headers.Add(
+            context
+                .Request
+                .Headers
+                .ToDictionary(h => h.Key, h => h.Value.ToString()
+                )
+            );
 
-        var enrichers = serviceProvider.GetServices<IEnricher>();
         foreach (var enricher in enrichers)
         {
             if (enricher.CanEnrich(invocation))
@@ -117,8 +123,8 @@ public static class Program
 
         var tcs = new TaskCompletionSource<InvocationResponse>();
         // Add the request to the pending requests dictionary and remove it when the token is cancelled
-        responseReader.AddRequest(correlationId, tcs);
-        cts.Token.Register(() => responseReader.RemoveRequest(correlationId));
+        responseReaderService.AddRequest(correlationId, tcs);
+        cts.Token.Register(() => responseReaderService.RemoveRequest(correlationId));
 
         var result = await tcs.Task.WaitAsync(cts.Token);
         if (result.HttpResponse is null)
@@ -133,6 +139,6 @@ public static class Program
             context.Response.Headers[header.Key] = header.Value;
         }
 
-        await context.Response.Body.WriteAsync(result.HttpResponse.Body.ToByteArray());
+        await context.Response.Body.WriteAsync(result.HttpResponse.Body.ToByteArray(), cts.Token);
     }
 }

@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using Aspire.Hosting;
 
 using var rsa = new RSACryptoServiceProvider(1024);
 var privateKeyPem = rsa.ExportRSAPrivateKeyPem();

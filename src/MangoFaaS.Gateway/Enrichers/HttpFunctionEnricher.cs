@@ -3,7 +3,6 @@ using MangoFaaS.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Route = MangoFaaS.Gateway.Models.Route;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace MangoFaaS.Gateway.Enrichers;
@@ -84,7 +83,7 @@ public class HttpFunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext d
             case Enums.RouteType.Regex:
                 try
                 {
-                    var isMatch = Regex.IsMatch(path, pattern);
+                    var isMatch = Regex.IsMatch(path, pattern, RegexOptions.None, TimeSpan.FromMilliseconds(100));
                     return (isMatch, 1000, 0);
                 }
                 catch

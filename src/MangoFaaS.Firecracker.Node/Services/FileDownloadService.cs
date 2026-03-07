@@ -6,14 +6,13 @@ using MangoFaaS.Common.Services;
 using MangoFaaS.Models;
 using MangoFaaS.Models.Enums;
 using Microsoft.Extensions.Options;
-using Microsoft.Kiota.Abstractions;
 using Minio;
 
 namespace MangoFaaS.Firecracker.Node.Services;
 
 public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger<MinioImageDownloadService> logger, Instrumentation instrumentation, IOptions<ImageDownloadServiceOptions> options, IMinioClient minioClient, ProcessExecutionService processExecutionService) : BackgroundService, IImageDownloadService
 {
-    public readonly ConcurrentDictionary<string, FileInUse> _inUseFiles = new();
+    private readonly ConcurrentDictionary<string, FileInUse> _inUseFiles = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _downloadLocks = new();
 
     public async Task<FunctionImages> DownloadImagesForFunctionAsync(string functionId, string functionVersion, CancellationToken token = default)
@@ -30,9 +29,9 @@ public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger
         if (mangoFunctionManifest is null)
             throw new InvalidOperationException("Minio did not return a valid function manifest");
 
-        var rootfsDownloadTask = GetOrDownload("runtimes", $"{mangoFunctionManifest.RuntimeImage}", mangoFunctionManifest.RuntimeCompression);
-        var kernelDownloadTask = GetOrDownload("runtimes", $"00000000-0000-0000-0000-000000000000.vmlinux", CompressionMethod.None);
-        var overlayDownloadTask = GetOrDownload("functions", $"{functionId}/{functionVersion}", mangoFunctionManifest.OverlayCompression);
+        var rootfsDownloadTask = GetOrDownload("runtimes", $"{mangoFunctionManifest.RuntimeImage}", mangoFunctionManifest.RuntimeCompression, token);
+        var kernelDownloadTask = GetOrDownload("runtimes", $"00000000-0000-0000-0000-000000000000.vmlinux", CompressionMethod.None, token);
+        var overlayDownloadTask = GetOrDownload("functions", $"{functionId}/{functionVersion}", mangoFunctionManifest.OverlayCompression, token);
         await Task.WhenAll(rootfsDownloadTask, kernelDownloadTask, overlayDownloadTask);
 
         return new FunctionImages(
@@ -44,22 +43,34 @@ public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger
 
     public async Task<FileInUse> GetOrDownload(string bucketName, string objectName, CompressionMethod compressionMethod = CompressionMethod.None, CancellationToken token = default)
     {
-        var semaphore = _downloadLocks.GetOrAdd($"{bucketName}/{objectName}", _ => new SemaphoreSlim(1, 1));
+        var key = $"{bucketName}/{objectName}";
+        var semaphore = _downloadLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
         await semaphore.WaitAsync(token);
         try
         {
-            if (_inUseFiles.TryGetValue($"{bucketName}/{objectName}", out var existingFile))
+            if (_inUseFiles.TryGetValue(key, out var existingFile))
             {
                 existingFile.Increment();
                 return existingFile;
             }
 
             var downloadedFile = await Download(bucketName, objectName, compressionMethod, token);
-            return _inUseFiles.AddOrUpdate($"{bucketName}/{objectName}", downloadedFile, (_, _) => downloadedFile);
+            _inUseFiles.TryAdd(key, downloadedFile);
+            return downloadedFile;
+        }
+        catch
+        {
+            // Remove the orphaned semaphore if download failed and nothing was registered
+            if (!_inUseFiles.ContainsKey(key))
+            {
+                _downloadLocks.TryRemove(key, out _);
+                semaphore.Dispose();
+            }
+            throw;
         }
         finally
         {
-            semaphore.Release();
+            try { semaphore.Release(); } catch { /* disposed on failed download */ }
         }
     }
 
@@ -104,7 +115,7 @@ public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger
             var cachePath =
                 new DirectoryInfo(Path.Combine(options.Value.CacheDirectoryPath, "_toremove", Guid.NewGuid().ToString("N")));
             cachePath.Create();
-            await processExecutionService.RunProcess("tar", $"-xSvf {compressedFile.FullName} -C {cachePath.FullName}/", token);
+            await processExecutionService.RunProcess("tar", $"-xSvf \"{compressedFile.FullName}\" -C \"{cachePath.FullName}/\"", token);
             var filePath = cachePath.EnumerateFiles("*", SearchOption.AllDirectories).FirstOrDefault()
                 ?? throw new InvalidOperationException("No file found in extracted directory");
 
@@ -151,12 +162,12 @@ public class MinioImageDownloadService(IServiceProvider serviceProvider, ILogger
                                     _inUseFiles.TryRemove(key, out _);
                                     file.File.Delete();
                                     _downloadLocks.TryRemove(key, out _);
-                                    semaphore?.Dispose();
+                                    semaphore.Dispose();
                                 }
                                 catch (Exception ex)
                                 {
                                     // Log and ignore
-                                    logger.LogWarning($"Failed to delete cached file {file.File.FullName}: {ex}");
+                                    logger.LogWarning(ex, "Failed to delete cached file {FilePath}", file.File.FullName);
                                 }
                             }
                         }
@@ -232,7 +243,15 @@ public interface IImageDownloadService
     public Task<FunctionImages> DownloadImagesForFunctionAsync(string functionId, string functionVersion, CancellationToken token = default);
 }
 
-public record FunctionImages(FileInUse Rootfs, FileInUse Kernel, FileInUse Overlay);
+public record FunctionImages(FileInUse Rootfs, FileInUse Kernel, FileInUse Overlay) : IDisposable
+{
+    public void Dispose()
+    {
+        Rootfs.Dispose();
+        Kernel.Dispose();
+        Overlay.Dispose();
+    }
+}
 
 public class ImageDownloadServiceOptions
 {

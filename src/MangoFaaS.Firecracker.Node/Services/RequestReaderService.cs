@@ -1,18 +1,14 @@
 using System.Diagnostics;
 using System.Collections.Concurrent;
 using System.Text;
-using System.Text.Json;
 using Confluent.Kafka;
 using MangoFaaS.Common;
-using MangoFaaS.Common.Services;
 using MangoFaaS.Firecracker.API;
 using MangoFaaS.Firecracker.Node.Pooling;
 using MangoFaaS.Models;
 using Microsoft.Extensions.Options;
-using Minio;
 using MangoFaaS.Firecracker.Node.Models;
 using MangoFaaS.Firecracker.Node.Store;
-using MangoFaaS.Common.Helpers;
 using Kafka.OffsetManagement;
 
 namespace MangoFaaS.Firecracker.Node.Services;
@@ -170,8 +166,13 @@ public class RequestReaderService(
         ArgumentNullException.ThrowIfNull(request.FunctionId);
         ArgumentNullException.ThrowIfNull(request.FunctionVersion);
 
-        (var cachedRootfs, var cachedKernelPath, var cachedOverlayfsPath) =
+        var (cachedRootfs, cachedKernelPath, cachedOverlayfsPath) =
             await imageDownloadService.DownloadImagesForFunctionAsync(request.FunctionId!, request.FunctionVersion!, ct);
+
+        // Register immediately so ref counts are decremented even if subsequent operations throw
+        lease.Handle.Disposables.Add(cachedRootfs);
+        lease.Handle.Disposables.Add(cachedKernelPath);
+        lease.Handle.Disposables.Add(cachedOverlayfsPath);
 
         var overlayfsPath = GetTempFileName();
         cachedOverlayfsPath.File.CopyTo(overlayfsPath, true);
@@ -198,10 +199,6 @@ public class RequestReaderService(
             BootArgs = $"console=ttyS0 reboot=k panic=1 pci=off ip={lease.Handle.NetworkEntry.GuestIp}::{lease.Handle.NetworkEntry.HostIp}:255.255.255.252::eth0:off init=/sbin/overlay-init overlay_root=/vdb",
             KernelImagePath = cachedKernelPath.File.FullName
         }, cancellationToken: ct);
-
-        lease.Handle.Disposables.Add(cachedRootfs);
-        lease.Handle.Disposables.Add(cachedKernelPath);
-        lease.Handle.Disposables.Add(cachedOverlayfsPath);
     }
 
     private static string? GetHeader(Headers headers, string name)

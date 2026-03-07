@@ -49,7 +49,7 @@ public class ResponseReaderService(IConsumer<string, InvocationResponse> consume
                     catch (Exception ex)
                     {
                         // Log exception
-                        Console.WriteLine($"Error consuming message: {ex}");
+                        logger.LogError(ex, "Error consuming message: {Exception}", ex);
                     }
                 }
 
@@ -57,6 +57,7 @@ public class ResponseReaderService(IConsumer<string, InvocationResponse> consume
             finally
             {
                 consumer.Close();
+                consumer.Dispose();
             }
         }, stoppingToken);
 
