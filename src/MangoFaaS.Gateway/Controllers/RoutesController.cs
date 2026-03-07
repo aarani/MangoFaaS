@@ -15,7 +15,12 @@ public class RoutesController(MangoGatewayDbContext dbContext) : ControllerBase
     [Authorize]
     public async Task<IActionResult> GetRoutes()
     {
-        var routes = await dbContext.Routes.ToListAsync();
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId is null) return Unauthorized();
+
+        var routes = await dbContext.Routes
+            .Where(r => r.TenantId == currentUserId || IsAdmin())
+            .ToListAsync();
         return Ok(routes);
     }
 
@@ -38,7 +43,6 @@ public class RoutesController(MangoGatewayDbContext dbContext) : ControllerBase
         var currentUserId = GetCurrentUserId();
         if (currentUserId is null) return Unauthorized();
 
-
         var route = new Models.Route()
         {
             Id = Guid.NewGuid().ToString(),
@@ -49,7 +53,6 @@ public class RoutesController(MangoGatewayDbContext dbContext) : ControllerBase
             FunctionVersion = request.FunctionVersion,
             Type = request.Type
         };
-
 
         await dbContext.Routes.AddAsync(route);
         await dbContext.SaveChangesAsync();
@@ -66,23 +69,14 @@ public class RoutesController(MangoGatewayDbContext dbContext) : ControllerBase
         var route = await dbContext.Routes.FirstOrDefaultAsync(r => r.Id == id && (r.TenantId == currentUserId || IsAdmin()));
         if (route is null) return NotFound();
 
-        var updatedRoute = new Models.Route()
-        {
-            Id = id,
-            TenantId = currentUserId,
-            Host = request.Host ?? route.Host,
-            Data = request.Data ?? route.Data,
-            FunctionId = request.FunctionId ?? route.FunctionId,
-            FunctionVersion = request.FunctionVersion ?? route.FunctionVersion,
-            Type = request.Type ?? route.Type
-        };
+        route.Host = request.Host ?? route.Host;
+        route.Data = request.Data ?? route.Data;
+        route.FunctionId = request.FunctionId ?? route.FunctionId;
+        route.FunctionVersion = request.FunctionVersion ?? route.FunctionVersion;
+        route.Type = request.Type ?? route.Type;
 
-
-        dbContext.Routes.Remove(route);
         await dbContext.SaveChangesAsync();
-        await dbContext.Routes.AddAsync(updatedRoute);
-        await dbContext.SaveChangesAsync();
-        return Created(string.Empty, updatedRoute.Id);
+        return Ok(route.Id);
     }
 
     [HttpDelete("{id:required}")]
@@ -92,7 +86,7 @@ public class RoutesController(MangoGatewayDbContext dbContext) : ControllerBase
         var currentUserId = GetCurrentUserId();
         if (currentUserId is null) return Unauthorized();
 
-        var route = dbContext.Routes.FirstOrDefault((r) => (r.TenantId == currentUserId || IsAdmin()) && r.Id == id);
+        var route = await dbContext.Routes.FirstOrDefaultAsync(r => (r.TenantId == currentUserId || IsAdmin()) && r.Id == id);
         if (route is null) return NotFound();
 
         dbContext.Routes.Remove(route);
@@ -100,9 +94,8 @@ public class RoutesController(MangoGatewayDbContext dbContext) : ControllerBase
         return NoContent();
     }
 
-    private string GetCurrentUserId() =>
-        User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? throw new InvalidOperationException("User ID claim (sub) not found in the JWT token.");
+    private string? GetCurrentUserId() =>
+        User.FindFirstValue(ClaimTypes.NameIdentifier);
 
     private bool IsAdmin() => User.IsInRole("Admin");
 }

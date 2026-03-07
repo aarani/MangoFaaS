@@ -10,8 +10,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Cryptography;
-using Microsoft.AspNetCore.OpenApi;
-using Swashbuckle.AspNetCore;
 
 namespace MangoFaaS.Gateway;
 
@@ -57,52 +55,28 @@ public static class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
 
+        var publicKeyPem = builder.Configuration["Jwt:PublicKeyPem"]
+            ?? throw new InvalidOperationException("JWT Public Key PEM not found in configuration['Jwt:PublicKeyPem']. Please ensure it's configured.");
+
+        var rsa = RSA.Create();
+        rsa.ImportFromPem(publicKeyPem);
+        var rsaSecurityKey = new RsaSecurityKey(rsa);
+
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
-        {
-            options.Events = new JwtBearerEvents
+            .AddJwtBearer(options =>
             {
-                OnAuthenticationFailed = context =>
+                options.Authority = null; // No authority since we're using self-contained tokens
+                options.Audience = null;  // No specific audience
+
+                options.TokenValidationParameters = new TokenValidationParameters
                 {
-                    Console.WriteLine($"Authentication failed: {context.Exception.Message}");
-                    return Task.CompletedTask;
-                },
-                OnTokenValidated = context =>
-                {
-                    Console.WriteLine("Token validated successfully.");
-                    return Task.CompletedTask;
-                }
-            };
-            var publicKeyPem = builder.Configuration["Jwt:PublicKeyPem"];
-            if (string.IsNullOrEmpty(publicKeyPem))
-            {
-                throw new InvalidOperationException("JWT Public Key PEM not found in configuration['Jwt:PublicKeyPem']. Please ensure it's configured.");
-            }
-
-            var rsa = RSA.Create();
-            try
-            {
-                rsa.ImportFromPem(publicKeyPem);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException("Failed to import RSA public key from PEM string. Ensure it's a valid RSA public key PEM.", ex);
-            }
-
-            var rsaSecurityKey = new RsaSecurityKey(rsa);
-
-            options.Authority = null; // No authority since we're using self-contained tokens
-            options.Audience = null;  // No specific audience
-
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = rsaSecurityKey,
-                ValidateIssuer = false,
-                ValidateAudience = false,
-                ValidateLifetime = true
-            };
-        });
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = rsaSecurityKey,
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+                    ValidateLifetime = true
+                };
+            });
         builder.Services.AddAuthorization();
 
         builder.Services.AddControllers();
@@ -182,7 +156,6 @@ public static class Program
             context.Response.StatusCode = 404;
             return;
         }
-
 
         await producer.ProduceAsync("requests", new Message<string, Invocation>
         {
