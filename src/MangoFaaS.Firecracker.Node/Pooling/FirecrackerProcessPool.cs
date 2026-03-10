@@ -181,7 +181,6 @@ public sealed class FirecrackerProcessPool(
 
         var logsPipe = new NamedPipeServerStream(logsPipePath, PipeDirection.In);
         
-        
         // Build args; caller can override via DefaultArgs if needed
         var args = $"{_options.DefaultArgs ?? string.Empty} --api-sock {apiSock}";
 
@@ -233,7 +232,7 @@ public sealed class FirecrackerProcessPool(
 
         await client.Serial.PutAsync(new SerialDevice
         {
-            OutputPath = logsPipePath
+            SerialOutPath = logsPipePath
         }, cancellationToken: cancellationToken);
 
         var logReaderCts = new CancellationTokenSource();

@@ -19,6 +19,10 @@ namespace MangoFaaS.Firecracker.API.Models
         public int? AmountMib { get; set; }
         /// <summary>Whether the balloon should deflate when the guest has memory pressure.</summary>
         public bool? DeflateOnOom { get; set; }
+        /// <summary>Whether the free page hinting feature is enabled.</summary>
+        public bool? FreePageHinting { get; set; }
+        /// <summary>Whether the free page reporting feature is enabled.</summary>
+        public bool? FreePageReporting { get; set; }
         /// <summary>Interval in seconds between refreshing statistics. A non-zero value will enable the statistics. Defaults to 0.</summary>
         public int? StatsPollingIntervalS { get; set; }
         /// <summary>
@@ -35,7 +39,7 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="parseNode">The parse node to use to read the discriminator value and create the object</param>
         public static global::MangoFaaS.Firecracker.API.Models.Balloon CreateFromDiscriminatorValue(IParseNode parseNode)
         {
-            _ = parseNode ?? throw new ArgumentNullException(nameof(parseNode));
+            if(ReferenceEquals(parseNode, null)) throw new ArgumentNullException(nameof(parseNode));
             return new global::MangoFaaS.Firecracker.API.Models.Balloon();
         }
         /// <summary>
@@ -48,6 +52,8 @@ namespace MangoFaaS.Firecracker.API.Models
             {
                 { "amount_mib", n => { AmountMib = n.GetIntValue(); } },
                 { "deflate_on_oom", n => { DeflateOnOom = n.GetBoolValue(); } },
+                { "free_page_hinting", n => { FreePageHinting = n.GetBoolValue(); } },
+                { "free_page_reporting", n => { FreePageReporting = n.GetBoolValue(); } },
                 { "stats_polling_interval_s", n => { StatsPollingIntervalS = n.GetIntValue(); } },
             };
         }
@@ -57,9 +63,11 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="writer">Serialization writer to use to serialize this model</param>
         public virtual void Serialize(ISerializationWriter writer)
         {
-            _ = writer ?? throw new ArgumentNullException(nameof(writer));
+            if(ReferenceEquals(writer, null)) throw new ArgumentNullException(nameof(writer));
             writer.WriteIntValue("amount_mib", AmountMib);
             writer.WriteBoolValue("deflate_on_oom", DeflateOnOom);
+            writer.WriteBoolValue("free_page_hinting", FreePageHinting);
+            writer.WriteBoolValue("free_page_reporting", FreePageReporting);
             writer.WriteIntValue("stats_polling_interval_s", StatsPollingIntervalS);
             writer.WriteAdditionalData(AdditionalData);
         }

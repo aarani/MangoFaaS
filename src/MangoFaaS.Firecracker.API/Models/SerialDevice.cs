@@ -18,10 +18,10 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <summary>Path to a file or named pipe on the host to which serial output should be written.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
-        public string? OutputPath { get; set; }
+        public string? SerialOutPath { get; set; }
 #nullable restore
 #else
-        public string OutputPath { get; set; }
+        public string SerialOutPath { get; set; }
 #endif
         /// <summary>
         /// Instantiates a new <see cref="global::MangoFaaS.Firecracker.API.Models.SerialDevice"/> and sets the default values.
@@ -37,7 +37,7 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="parseNode">The parse node to use to read the discriminator value and create the object</param>
         public static global::MangoFaaS.Firecracker.API.Models.SerialDevice CreateFromDiscriminatorValue(IParseNode parseNode)
         {
-            _ = parseNode ?? throw new ArgumentNullException(nameof(parseNode));
+            if(ReferenceEquals(parseNode, null)) throw new ArgumentNullException(nameof(parseNode));
             return new global::MangoFaaS.Firecracker.API.Models.SerialDevice();
         }
         /// <summary>
@@ -48,7 +48,7 @@ namespace MangoFaaS.Firecracker.API.Models
         {
             return new Dictionary<string, Action<IParseNode>>
             {
-                { "output_path", n => { OutputPath = n.GetStringValue(); } },
+                { "serial_out_path", n => { SerialOutPath = n.GetStringValue(); } },
             };
         }
         /// <summary>
@@ -57,8 +57,8 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="writer">Serialization writer to use to serialize this model</param>
         public virtual void Serialize(ISerializationWriter writer)
         {
-            _ = writer ?? throw new ArgumentNullException(nameof(writer));
-            writer.WriteStringValue("output_path", OutputPath);
+            if(ReferenceEquals(writer, null)) throw new ArgumentNullException(nameof(writer));
+            writer.WriteStringValue("serial_out_path", SerialOutPath);
             writer.WriteAdditionalData(AdditionalData);
         }
     }

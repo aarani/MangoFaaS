@@ -1,10 +1,10 @@
-using System.Security.Cryptography;
-
-using var rsa = new RSACryptoServiceProvider(1024);
-var privateKeyPem = rsa.ExportRSAPrivateKeyPem();
-var publicKeyPem = rsa.ExportRSAPublicKeyPem();
-
 var builder = DistributedApplication.CreateBuilder(args);
+
+var keycloak =
+    builder.AddKeycloak("keycloak", 8080)
+        .WithRealmImport("Assets/realm-export.json")
+        .WithDataVolume("keycloak")
+        .WithOtlpExporter();
 
 var kafka =
     builder
@@ -24,12 +24,13 @@ var minio =
 
 var gatewaydb = postgres.AddDatabase("gatewaydb");
 var functionsdb = postgres.AddDatabase("functionsdb");
-var authdb = postgres.AddDatabase("authdb");
 
-builder.AddProject<Projects.MangoFaaS_Gateway>("MangoFaaS-Gateway")
+var gateway =
+    builder.AddProject<Projects.MangoFaaS_Gateway>("MangoFaaS-Gateway")
     .WithReference(kafka)
     .WithReference(gatewaydb)
-    .WithEnvironment("Jwt__PublicKeyPem", publicKeyPem)
+    .WithReference(keycloak)
+    .WaitFor(keycloak)
     .WaitFor(kafka)
     .WaitFor(gatewaydb);
 
@@ -39,18 +40,25 @@ builder.AddProject<Projects.MangoFaaS_Firecracker_Node>("MangoFaaS-Firecracker-N
     .WaitFor(kafka)
     .WaitFor(minio);
 
-builder.AddProject<Projects.MangoFaaS_Functions>("MangoFaaS-Functions")
+var functions =
+    builder.AddProject<Projects.MangoFaaS_Functions>("MangoFaaS-Functions")
     .WithReference(kafka)
     .WithReference(functionsdb)
     .WithReference(minio)
-    .WithEnvironment("Jwt__PublicKeyPem", publicKeyPem)
+    .WithReference(keycloak)
+    .WaitFor(keycloak)
     .WaitFor(kafka)
     .WaitFor(functionsdb)
     .WaitFor(minio);
 
-builder.AddProject<Projects.MangoFaaS_Authorization>("MangoFaaS-Authorization")
-    .WithReference(authdb)
-    .WithEnvironment("Jwt__PrivateKeyPem", privateKeyPem)
-    .WaitFor(authdb);
+
+builder.AddJavaScriptApp("frontend", "../MangoFaaS.Frontend", "dev")
+    .WithHttpEndpoint(port: 5173, env: "PORT")
+    .WithEnvironment("VITE_FUNCTIONS_URL", functions.GetEndpoint("http"))
+    .WithEnvironment("VITE_GATEWAY_URL", gateway.GetEndpoint("http"))
+    .WithEnvironment("VITE_KEYCLOAK_URL", keycloak.GetEndpoint("https"))
+    .WaitFor(keycloak)
+    .WaitFor(functions)
+    .WaitFor(gateway);
 
 builder.Build().Run();

@@ -15,8 +15,8 @@ namespace MangoFaaS.Firecracker.API.Models
     {
         /// <summary>Stores additional data not described in the OpenAPI description found when deserializing. Can be used for serialization as well.</summary>
         public IDictionary<string, object> AdditionalData { get; set; }
-        /// <summary>MMDS operates compatibly with EC2 IMDS (i.e. reponds &quot;text/plain&quot; content regardless of Accept header in requests).</summary>
-        public bool? ImdsComat { get; set; }
+        /// <summary>MMDS operates compatibly with EC2 IMDS (i.e. responds &quot;text/plain&quot; content regardless of Accept header in requests).</summary>
+        public bool? ImdsCompat { get; set; }
         /// <summary>A valid IPv4 link-local address.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
@@ -51,7 +51,7 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="parseNode">The parse node to use to read the discriminator value and create the object</param>
         public static global::MangoFaaS.Firecracker.API.Models.MmdsConfig CreateFromDiscriminatorValue(IParseNode parseNode)
         {
-            _ = parseNode ?? throw new ArgumentNullException(nameof(parseNode));
+            if(ReferenceEquals(parseNode, null)) throw new ArgumentNullException(nameof(parseNode));
             return new global::MangoFaaS.Firecracker.API.Models.MmdsConfig();
         }
         /// <summary>
@@ -62,7 +62,7 @@ namespace MangoFaaS.Firecracker.API.Models
         {
             return new Dictionary<string, Action<IParseNode>>
             {
-                { "imds_comat", n => { ImdsComat = n.GetBoolValue(); } },
+                { "imds_compat", n => { ImdsCompat = n.GetBoolValue(); } },
                 { "ipv4_address", n => { Ipv4Address = n.GetStringValue(); } },
                 { "network_interfaces", n => { NetworkInterfaces = n.GetCollectionOfPrimitiveValues<string>()?.AsList(); } },
                 { "version", n => { Version = n.GetEnumValue<global::MangoFaaS.Firecracker.API.Models.MmdsConfig_version>(); } },
@@ -74,8 +74,8 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="writer">Serialization writer to use to serialize this model</param>
         public virtual void Serialize(ISerializationWriter writer)
         {
-            _ = writer ?? throw new ArgumentNullException(nameof(writer));
-            writer.WriteBoolValue("imds_comat", ImdsComat);
+            if(ReferenceEquals(writer, null)) throw new ArgumentNullException(nameof(writer));
+            writer.WriteBoolValue("imds_compat", ImdsCompat);
             writer.WriteStringValue("ipv4_address", Ipv4Address);
             writer.WriteCollectionOfPrimitiveValues<string>("network_interfaces", NetworkInterfaces);
             writer.WriteEnumValue<global::MangoFaaS.Firecracker.API.Models.MmdsConfig_version>("version", Version);

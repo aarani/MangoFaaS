@@ -4,5 +4,8 @@ import { defineConfig } from "vite"
 import tsconfigPaths from "vite-tsconfig-paths"
 
 export default defineConfig({
+  server: {
+    port: parseInt(process.env.PORT ?? "5173"),
+  },
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
 })

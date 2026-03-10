@@ -6,10 +6,8 @@ using MangoFaaS.Gateway.Enrichers;
 using MangoFaaS.Gateway.Models;
 using MangoFaaS.Models;
 using MangoFaaS.Models.Helpers;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using System.Security.Cryptography;
 
 namespace MangoFaaS.Gateway;
 
@@ -43,6 +41,7 @@ public static class Program
 
         builder.Services.AddMemoryCache();
 
+        
         builder.Services.AddSingleton<ResponseReaderService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<ResponseReaderService>());
 
@@ -55,30 +54,27 @@ public static class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
 
-        var publicKeyPem = builder.Configuration["Jwt:PublicKeyPem"]
-            ?? throw new InvalidOperationException("JWT Public Key PEM not found in configuration['Jwt:PublicKeyPem']. Please ensure it's configured.");
+        builder.AddMangoKeycloakAuth();
 
-        var rsa = RSA.Create();
-        rsa.ImportFromPem(publicKeyPem);
-        var rsaSecurityKey = new RsaSecurityKey(rsa);
-
-        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddJwtBearer(options =>
+        builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("MyCors", policy =>
             {
-                options.Authority = null; // No authority since we're using self-contained tokens
-                options.Audience = null;  // No specific audience
-
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = rsaSecurityKey,
-                    ValidateIssuer = false,
-                    ValidateAudience = false,
-                    ValidateLifetime = true
-                };
+                policy
+                    .WithOrigins("http://localhost", "http://localhost:5173")
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()
+                    .AllowCredentials();
             });
-        builder.Services.AddAuthorization();
+        });
 
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders =
+                ForwardedHeaders.XForwardedHost;
+        });
+        
+        
         builder.Services.AddControllers();
 
         var app = builder.Build();
@@ -91,7 +87,7 @@ public static class Program
             await dbContext.Database.MigrateAsync();
         }
 
-        app.UseHttpsRedirection();
+        app.UseCors("MyCors");
 
         if (app.Environment.IsDevelopment())
         {
@@ -101,10 +97,11 @@ public static class Program
 
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseForwardedHeaders();
 
         app.MapControllers();
 
-        app.Map("/{**path}", HandleRequest);
+        app.MapFallback("/{**path}", HandleRequest);
 
         await app.RunAsync();
     }

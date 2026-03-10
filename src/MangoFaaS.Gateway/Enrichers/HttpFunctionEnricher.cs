@@ -15,11 +15,6 @@ public class HttpFunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext d
 
         var request = invocation.HttpRequest;
 
-        // Remove query string for route matching
-        var requestPath = request.Path;
-        var qIndex = requestPath.IndexOf('?');
-        if (qIndex >= 0) requestPath = requestPath[..qIndex];
-
         var cacheKey = $"routes_{request.Host}";
         if (!memCache.TryGetValue(cacheKey, out List<Route>? routes))
         {
@@ -44,7 +39,7 @@ public class HttpFunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext d
             if (string.IsNullOrWhiteSpace(route.FunctionId) || string.IsNullOrWhiteSpace(route.Data))
                 continue;
 
-            var matchResult = Matches(route.Type, requestPath, route.Data);
+            var matchResult = Matches(route.Type, request.Path, route.Data);
             if (!matchResult.isMatch) continue;
 
             // Early-exit: Exact match is the highest possible priority; no need to check further

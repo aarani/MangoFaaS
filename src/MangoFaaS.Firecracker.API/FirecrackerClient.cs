@@ -6,12 +6,14 @@ using MangoFaaS.Firecracker.API.BootSource;
 using MangoFaaS.Firecracker.API.CpuConfig;
 using MangoFaaS.Firecracker.API.Drives;
 using MangoFaaS.Firecracker.API.Entropy;
+using MangoFaaS.Firecracker.API.Hotplug;
 using MangoFaaS.Firecracker.API.Logger;
 using MangoFaaS.Firecracker.API.MachineConfig;
 using MangoFaaS.Firecracker.API.Metrics;
 using MangoFaaS.Firecracker.API.Mmds;
 using MangoFaaS.Firecracker.API.Models;
 using MangoFaaS.Firecracker.API.NetworkInterfaces;
+using MangoFaaS.Firecracker.API.Pmem;
 using MangoFaaS.Firecracker.API.Serial;
 using MangoFaaS.Firecracker.API.Snapshot;
 using MangoFaaS.Firecracker.API.VersionNamespace;
@@ -67,6 +69,11 @@ namespace MangoFaaS.Firecracker.API
         {
             get => new global::MangoFaaS.Firecracker.API.Entropy.EntropyRequestBuilder(PathParameters, RequestAdapter);
         }
+        /// <summary>The hotplug property</summary>
+        public global::MangoFaaS.Firecracker.API.Hotplug.HotplugRequestBuilder Hotplug
+        {
+            get => new global::MangoFaaS.Firecracker.API.Hotplug.HotplugRequestBuilder(PathParameters, RequestAdapter);
+        }
         /// <summary>The logger property</summary>
         public global::MangoFaaS.Firecracker.API.Logger.LoggerRequestBuilder Logger
         {
@@ -91,6 +98,11 @@ namespace MangoFaaS.Firecracker.API
         public global::MangoFaaS.Firecracker.API.NetworkInterfaces.NetworkInterfacesRequestBuilder NetworkInterfaces
         {
             get => new global::MangoFaaS.Firecracker.API.NetworkInterfaces.NetworkInterfacesRequestBuilder(PathParameters, RequestAdapter);
+        }
+        /// <summary>The pmem property</summary>
+        public global::MangoFaaS.Firecracker.API.Pmem.PmemRequestBuilder Pmem
+        {
+            get => new global::MangoFaaS.Firecracker.API.Pmem.PmemRequestBuilder(PathParameters, RequestAdapter);
         }
         /// <summary>The serial property</summary>
         public global::MangoFaaS.Firecracker.API.Serial.SerialRequestBuilder Serial

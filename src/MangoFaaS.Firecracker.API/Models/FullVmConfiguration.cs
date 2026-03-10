@@ -70,6 +70,14 @@ namespace MangoFaaS.Firecracker.API.Models
 #else
         public global::MangoFaaS.Firecracker.API.Models.MachineConfiguration MachineConfig { get; set; }
 #endif
+        /// <summary>The configuration of the hotpluggable memory device (virtio-mem)</summary>
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
+#nullable enable
+        public global::MangoFaaS.Firecracker.API.Models.MemoryHotplugConfig? MemoryHotplug { get; set; }
+#nullable restore
+#else
+        public global::MangoFaaS.Firecracker.API.Models.MemoryHotplugConfig MemoryHotplug { get; set; }
+#endif
         /// <summary>Describes the configuration option for the metrics capability.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
@@ -94,6 +102,14 @@ namespace MangoFaaS.Firecracker.API.Models
 #else
         public List<global::MangoFaaS.Firecracker.API.Models.NetworkInterface> NetworkInterfaces { get; set; }
 #endif
+        /// <summary>Configurations for all pmem devices.</summary>
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
+#nullable enable
+        public List<global::MangoFaaS.Firecracker.API.Models.Pmem>? Pmem { get; set; }
+#nullable restore
+#else
+        public List<global::MangoFaaS.Firecracker.API.Models.Pmem> Pmem { get; set; }
+#endif
         /// <summary>Defines a vsock device, backed by a set of Unix Domain Sockets, on the host side. For host-initiated connections, Firecracker will be listening on the Unix socket identified by the path `uds_path`. Firecracker will create this socket, bind and listen on it. Host-initiated connections will be performed by connection to this socket and issuing a connection forwarding request to the desired guest-side vsock port (i.e. `CONNECT 52\n`, to connect to port 52). For guest-initiated connections, Firecracker will expect host software to be bound and listening on Unix sockets at `uds_path_&lt;PORT&gt;`. E.g. &quot;/path/to/host_vsock.sock_52&quot; for port number 52.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
@@ -116,7 +132,7 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="parseNode">The parse node to use to read the discriminator value and create the object</param>
         public static global::MangoFaaS.Firecracker.API.Models.FullVmConfiguration CreateFromDiscriminatorValue(IParseNode parseNode)
         {
-            _ = parseNode ?? throw new ArgumentNullException(nameof(parseNode));
+            if(ReferenceEquals(parseNode, null)) throw new ArgumentNullException(nameof(parseNode));
             return new global::MangoFaaS.Firecracker.API.Models.FullVmConfiguration();
         }
         /// <summary>
@@ -134,9 +150,11 @@ namespace MangoFaaS.Firecracker.API.Models
                 { "entropy", n => { Entropy = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.EntropyDevice>(global::MangoFaaS.Firecracker.API.Models.EntropyDevice.CreateFromDiscriminatorValue); } },
                 { "logger", n => { Logger = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.Logger>(global::MangoFaaS.Firecracker.API.Models.Logger.CreateFromDiscriminatorValue); } },
                 { "machine-config", n => { MachineConfig = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.MachineConfiguration>(global::MangoFaaS.Firecracker.API.Models.MachineConfiguration.CreateFromDiscriminatorValue); } },
+                { "memory-hotplug", n => { MemoryHotplug = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.MemoryHotplugConfig>(global::MangoFaaS.Firecracker.API.Models.MemoryHotplugConfig.CreateFromDiscriminatorValue); } },
                 { "metrics", n => { Metrics = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.Metrics>(global::MangoFaaS.Firecracker.API.Models.Metrics.CreateFromDiscriminatorValue); } },
                 { "mmds-config", n => { MmdsConfig = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.MmdsConfig>(global::MangoFaaS.Firecracker.API.Models.MmdsConfig.CreateFromDiscriminatorValue); } },
                 { "network-interfaces", n => { NetworkInterfaces = n.GetCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.NetworkInterface>(global::MangoFaaS.Firecracker.API.Models.NetworkInterface.CreateFromDiscriminatorValue)?.AsList(); } },
+                { "pmem", n => { Pmem = n.GetCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.Pmem>(global::MangoFaaS.Firecracker.API.Models.Pmem.CreateFromDiscriminatorValue)?.AsList(); } },
                 { "vsock", n => { Vsock = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.Vsock>(global::MangoFaaS.Firecracker.API.Models.Vsock.CreateFromDiscriminatorValue); } },
             };
         }
@@ -146,7 +164,7 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="writer">Serialization writer to use to serialize this model</param>
         public virtual void Serialize(ISerializationWriter writer)
         {
-            _ = writer ?? throw new ArgumentNullException(nameof(writer));
+            if(ReferenceEquals(writer, null)) throw new ArgumentNullException(nameof(writer));
             writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.Balloon>("balloon", Balloon);
             writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.BootSource>("boot-source", BootSource);
             writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig>("cpu-config", CpuConfig);
@@ -154,9 +172,11 @@ namespace MangoFaaS.Firecracker.API.Models
             writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.EntropyDevice>("entropy", Entropy);
             writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.Logger>("logger", Logger);
             writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.MachineConfiguration>("machine-config", MachineConfig);
+            writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.MemoryHotplugConfig>("memory-hotplug", MemoryHotplug);
             writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.Metrics>("metrics", Metrics);
             writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.MmdsConfig>("mmds-config", MmdsConfig);
             writer.WriteCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.NetworkInterface>("network-interfaces", NetworkInterfaces);
+            writer.WriteCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.Pmem>("pmem", Pmem);
             writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.Vsock>("vsock", Vsock);
             writer.WriteAdditionalData(AdditionalData);
         }

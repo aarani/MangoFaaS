@@ -15,45 +15,45 @@ namespace MangoFaaS.Firecracker.API.Models
     {
         /// <summary>Stores additional data not described in the OpenAPI description found when deserializing. Can be used for serialization as well.</summary>
         public IDictionary<string, object> AdditionalData { get; set; }
-        /// <summary>A collection of CPUIDs to be modified. (x86_64)</summary>
+        /// <summary>A collection of CPUID leaf modifiers (x86_64 only)</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
-        public global::MangoFaaS.Firecracker.API.Models.CpuConfig_cpuid_modifiers? CpuidModifiers { get; set; }
+        public List<global::MangoFaaS.Firecracker.API.Models.CpuidLeafModifier>? CpuidModifiers { get; set; }
 #nullable restore
 #else
-        public global::MangoFaaS.Firecracker.API.Models.CpuConfig_cpuid_modifiers CpuidModifiers { get; set; }
+        public List<global::MangoFaaS.Firecracker.API.Models.CpuidLeafModifier> CpuidModifiers { get; set; }
 #endif
-        /// <summary>A collection of kvm capabilities to be modified. (aarch64)</summary>
+        /// <summary>A collection of KVM capabilities to be added or removed (both x86_64 and aarch64)</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
-        public global::MangoFaaS.Firecracker.API.Models.CpuConfig_kvm_capabilities? KvmCapabilities { get; set; }
+        public List<string>? KvmCapabilities { get; set; }
 #nullable restore
 #else
-        public global::MangoFaaS.Firecracker.API.Models.CpuConfig_kvm_capabilities KvmCapabilities { get; set; }
+        public List<string> KvmCapabilities { get; set; }
 #endif
-        /// <summary>A collection of model specific registers to be modified. (x86_64)</summary>
+        /// <summary>A collection of model specific register modifiers (x86_64 only)</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
-        public global::MangoFaaS.Firecracker.API.Models.CpuConfig_msr_modifiers? MsrModifiers { get; set; }
+        public List<global::MangoFaaS.Firecracker.API.Models.MsrModifier>? MsrModifiers { get; set; }
 #nullable restore
 #else
-        public global::MangoFaaS.Firecracker.API.Models.CpuConfig_msr_modifiers MsrModifiers { get; set; }
+        public List<global::MangoFaaS.Firecracker.API.Models.MsrModifier> MsrModifiers { get; set; }
 #endif
-        /// <summary>A collection of registers to be modified. (aarch64)</summary>
+        /// <summary>A collection of register modifiers (aarch64 only)</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
-        public global::MangoFaaS.Firecracker.API.Models.CpuConfig_reg_modifiers? RegModifiers { get; set; }
+        public List<global::MangoFaaS.Firecracker.API.Models.ArmRegisterModifier>? RegModifiers { get; set; }
 #nullable restore
 #else
-        public global::MangoFaaS.Firecracker.API.Models.CpuConfig_reg_modifiers RegModifiers { get; set; }
+        public List<global::MangoFaaS.Firecracker.API.Models.ArmRegisterModifier> RegModifiers { get; set; }
 #endif
-        /// <summary>A collection of vcpu features to be modified. (aarch64)</summary>
+        /// <summary>A collection of vCPU features to be modified (aarch64 only)</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
-        public global::MangoFaaS.Firecracker.API.Models.CpuConfig_vcpu_features? VcpuFeatures { get; set; }
+        public List<global::MangoFaaS.Firecracker.API.Models.VcpuFeatures>? VcpuFeatures { get; set; }
 #nullable restore
 #else
-        public global::MangoFaaS.Firecracker.API.Models.CpuConfig_vcpu_features VcpuFeatures { get; set; }
+        public List<global::MangoFaaS.Firecracker.API.Models.VcpuFeatures> VcpuFeatures { get; set; }
 #endif
         /// <summary>
         /// Instantiates a new <see cref="global::MangoFaaS.Firecracker.API.Models.CpuConfig"/> and sets the default values.
@@ -69,7 +69,7 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="parseNode">The parse node to use to read the discriminator value and create the object</param>
         public static global::MangoFaaS.Firecracker.API.Models.CpuConfig CreateFromDiscriminatorValue(IParseNode parseNode)
         {
-            _ = parseNode ?? throw new ArgumentNullException(nameof(parseNode));
+            if(ReferenceEquals(parseNode, null)) throw new ArgumentNullException(nameof(parseNode));
             return new global::MangoFaaS.Firecracker.API.Models.CpuConfig();
         }
         /// <summary>
@@ -80,11 +80,11 @@ namespace MangoFaaS.Firecracker.API.Models
         {
             return new Dictionary<string, Action<IParseNode>>
             {
-                { "cpuid_modifiers", n => { CpuidModifiers = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig_cpuid_modifiers>(global::MangoFaaS.Firecracker.API.Models.CpuConfig_cpuid_modifiers.CreateFromDiscriminatorValue); } },
-                { "kvm_capabilities", n => { KvmCapabilities = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig_kvm_capabilities>(global::MangoFaaS.Firecracker.API.Models.CpuConfig_kvm_capabilities.CreateFromDiscriminatorValue); } },
-                { "msr_modifiers", n => { MsrModifiers = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig_msr_modifiers>(global::MangoFaaS.Firecracker.API.Models.CpuConfig_msr_modifiers.CreateFromDiscriminatorValue); } },
-                { "reg_modifiers", n => { RegModifiers = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig_reg_modifiers>(global::MangoFaaS.Firecracker.API.Models.CpuConfig_reg_modifiers.CreateFromDiscriminatorValue); } },
-                { "vcpu_features", n => { VcpuFeatures = n.GetObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig_vcpu_features>(global::MangoFaaS.Firecracker.API.Models.CpuConfig_vcpu_features.CreateFromDiscriminatorValue); } },
+                { "cpuid_modifiers", n => { CpuidModifiers = n.GetCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.CpuidLeafModifier>(global::MangoFaaS.Firecracker.API.Models.CpuidLeafModifier.CreateFromDiscriminatorValue)?.AsList(); } },
+                { "kvm_capabilities", n => { KvmCapabilities = n.GetCollectionOfPrimitiveValues<string>()?.AsList(); } },
+                { "msr_modifiers", n => { MsrModifiers = n.GetCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.MsrModifier>(global::MangoFaaS.Firecracker.API.Models.MsrModifier.CreateFromDiscriminatorValue)?.AsList(); } },
+                { "reg_modifiers", n => { RegModifiers = n.GetCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.ArmRegisterModifier>(global::MangoFaaS.Firecracker.API.Models.ArmRegisterModifier.CreateFromDiscriminatorValue)?.AsList(); } },
+                { "vcpu_features", n => { VcpuFeatures = n.GetCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.VcpuFeatures>(global::MangoFaaS.Firecracker.API.Models.VcpuFeatures.CreateFromDiscriminatorValue)?.AsList(); } },
             };
         }
         /// <summary>
@@ -93,12 +93,12 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="writer">Serialization writer to use to serialize this model</param>
         public virtual void Serialize(ISerializationWriter writer)
         {
-            _ = writer ?? throw new ArgumentNullException(nameof(writer));
-            writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig_cpuid_modifiers>("cpuid_modifiers", CpuidModifiers);
-            writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig_kvm_capabilities>("kvm_capabilities", KvmCapabilities);
-            writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig_msr_modifiers>("msr_modifiers", MsrModifiers);
-            writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig_reg_modifiers>("reg_modifiers", RegModifiers);
-            writer.WriteObjectValue<global::MangoFaaS.Firecracker.API.Models.CpuConfig_vcpu_features>("vcpu_features", VcpuFeatures);
+            if(ReferenceEquals(writer, null)) throw new ArgumentNullException(nameof(writer));
+            writer.WriteCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.CpuidLeafModifier>("cpuid_modifiers", CpuidModifiers);
+            writer.WriteCollectionOfPrimitiveValues<string>("kvm_capabilities", KvmCapabilities);
+            writer.WriteCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.MsrModifier>("msr_modifiers", MsrModifiers);
+            writer.WriteCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.ArmRegisterModifier>("reg_modifiers", RegModifiers);
+            writer.WriteCollectionOfObjectValues<global::MangoFaaS.Firecracker.API.Models.VcpuFeatures>("vcpu_features", VcpuFeatures);
             writer.WriteAdditionalData(AdditionalData);
         }
     }

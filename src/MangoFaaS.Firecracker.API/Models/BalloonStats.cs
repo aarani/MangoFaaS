@@ -19,8 +19,18 @@ namespace MangoFaaS.Firecracker.API.Models
         public int? ActualPages { get; set; }
         /// <summary>Stores additional data not described in the OpenAPI description found when deserializing. Can be used for serialization as well.</summary>
         public IDictionary<string, object> AdditionalData { get; set; }
+        /// <summary>Counter of Allocation enter a slow path to gain more memory page. The reclaim/scan metrics can reveal what is actually happening.</summary>
+        public long? AllocStall { get; set; }
+        /// <summary>Amount of memory reclaimed asynchronously.</summary>
+        public long? AsyncReclaim { get; set; }
+        /// <summary>Amount of memory scanned asynchronously.</summary>
+        public long? AsyncScan { get; set; }
         /// <summary>An estimate of how much memory is available (in bytes) for starting new applications, without pushing the system to swap.</summary>
         public long? AvailableMemory { get; set; }
+        /// <summary>Amount of memory reclaimed directly.</summary>
+        public long? DirectReclaim { get; set; }
+        /// <summary>Amount of memory scanned directly.</summary>
+        public long? DirectScan { get; set; }
         /// <summary>The amount of memory, in bytes, that can be quickly reclaimed without additional I/O. Typically these pages are used for caching files from disk.</summary>
         public long? DiskCaches { get; set; }
         /// <summary>The amount of memory not being used for any purpose (in bytes).</summary>
@@ -33,6 +43,8 @@ namespace MangoFaaS.Firecracker.API.Models
         public long? MajorFaults { get; set; }
         /// <summary>The number of minor page faults that have occurred.</summary>
         public long? MinorFaults { get; set; }
+        /// <summary>OOM killer invocations, indicating critical memory pressure.</summary>
+        public long? OomKill { get; set; }
         /// <summary>The amount of memory that has been swapped in (in bytes).</summary>
         public long? SwapIn { get; set; }
         /// <summary>The amount of memory that has been swapped out to disk (in bytes).</summary>
@@ -57,7 +69,7 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="parseNode">The parse node to use to read the discriminator value and create the object</param>
         public static global::MangoFaaS.Firecracker.API.Models.BalloonStats CreateFromDiscriminatorValue(IParseNode parseNode)
         {
-            _ = parseNode ?? throw new ArgumentNullException(nameof(parseNode));
+            if(ReferenceEquals(parseNode, null)) throw new ArgumentNullException(nameof(parseNode));
             return new global::MangoFaaS.Firecracker.API.Models.BalloonStats();
         }
         /// <summary>
@@ -70,13 +82,19 @@ namespace MangoFaaS.Firecracker.API.Models
             {
                 { "actual_mib", n => { ActualMib = n.GetIntValue(); } },
                 { "actual_pages", n => { ActualPages = n.GetIntValue(); } },
+                { "alloc_stall", n => { AllocStall = n.GetLongValue(); } },
+                { "async_reclaim", n => { AsyncReclaim = n.GetLongValue(); } },
+                { "async_scan", n => { AsyncScan = n.GetLongValue(); } },
                 { "available_memory", n => { AvailableMemory = n.GetLongValue(); } },
+                { "direct_reclaim", n => { DirectReclaim = n.GetLongValue(); } },
+                { "direct_scan", n => { DirectScan = n.GetLongValue(); } },
                 { "disk_caches", n => { DiskCaches = n.GetLongValue(); } },
                 { "free_memory", n => { FreeMemory = n.GetLongValue(); } },
                 { "hugetlb_allocations", n => { HugetlbAllocations = n.GetLongValue(); } },
                 { "hugetlb_failures", n => { HugetlbFailures = n.GetLongValue(); } },
                 { "major_faults", n => { MajorFaults = n.GetLongValue(); } },
                 { "minor_faults", n => { MinorFaults = n.GetLongValue(); } },
+                { "oom_kill", n => { OomKill = n.GetLongValue(); } },
                 { "swap_in", n => { SwapIn = n.GetLongValue(); } },
                 { "swap_out", n => { SwapOut = n.GetLongValue(); } },
                 { "target_mib", n => { TargetMib = n.GetIntValue(); } },
@@ -90,16 +108,22 @@ namespace MangoFaaS.Firecracker.API.Models
         /// <param name="writer">Serialization writer to use to serialize this model</param>
         public virtual void Serialize(ISerializationWriter writer)
         {
-            _ = writer ?? throw new ArgumentNullException(nameof(writer));
+            if(ReferenceEquals(writer, null)) throw new ArgumentNullException(nameof(writer));
             writer.WriteIntValue("actual_mib", ActualMib);
             writer.WriteIntValue("actual_pages", ActualPages);
+            writer.WriteLongValue("alloc_stall", AllocStall);
+            writer.WriteLongValue("async_reclaim", AsyncReclaim);
+            writer.WriteLongValue("async_scan", AsyncScan);
             writer.WriteLongValue("available_memory", AvailableMemory);
+            writer.WriteLongValue("direct_reclaim", DirectReclaim);
+            writer.WriteLongValue("direct_scan", DirectScan);
             writer.WriteLongValue("disk_caches", DiskCaches);
             writer.WriteLongValue("free_memory", FreeMemory);
             writer.WriteLongValue("hugetlb_allocations", HugetlbAllocations);
             writer.WriteLongValue("hugetlb_failures", HugetlbFailures);
             writer.WriteLongValue("major_faults", MajorFaults);
             writer.WriteLongValue("minor_faults", MinorFaults);
+            writer.WriteLongValue("oom_kill", OomKill);
             writer.WriteLongValue("swap_in", SwapIn);
             writer.WriteLongValue("swap_out", SwapOut);
             writer.WriteIntValue("target_mib", TargetMib);
