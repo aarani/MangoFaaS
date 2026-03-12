@@ -88,10 +88,10 @@ public class RuntimesController(MangoFunctionsDbContext mangoFunctionsDbContext,
         {
             var tempDeflatedPath = Path.GetTempFileName();
 
-            using (var deflatedFile = System.IO.File.OpenWrite(tempDeflatedPath))
-            using (DeflateStream compressor = new(deflatedFile, CompressionLevel.Fastest))
+            await using (var deflatedFile = System.IO.File.OpenWrite(tempDeflatedPath))
+            await using (DeflateStream compressor = new(deflatedFile, CompressionLevel.Fastest))
             {
-                using (var runtimeFile = System.IO.File.OpenRead(tempRawRuntimePath))
+                await using (var runtimeFile = System.IO.File.OpenRead(tempRawRuntimePath))
                 {
                     runtimeFile.Seek(0, SeekOrigin.Begin);
                     await runtimeFile.CopyToAsync(compressor);
