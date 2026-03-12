@@ -8,6 +8,7 @@ using MangoFaaS.Firecracker.Node.Services;
 using MangoFaaS.Firecracker.Node.Store;
 using MangoFaaS.Models;
 using MangoFaaS.Models.Helpers;
+using Confluent.Kafka;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -16,6 +17,12 @@ builder.AddServiceDefaults();
 builder.AddMinioClient("minio");
 
 await KafkaHelpers.CreateTopicAsync(builder, "kafka", "requests", numPartitions: 3, replicationFactor: 1);
+
+builder.AddKafkaRpcClient<FunctionSecretsRequest, FunctionSecretsResponse>(
+    "kafka",
+    p => p.SetValueSerializer(new SystemTextJsonSerializer<FunctionSecretsRequest>()),
+    c => c.SetValueDeserializer(new SystemTextJsonDeserializer<FunctionSecretsResponse>()),
+    consumerGroupId: "firecracker-node-secrets");
 
 builder.AddKafkaRpcServer<Invocation, InvocationResponse>(
     "kafka",

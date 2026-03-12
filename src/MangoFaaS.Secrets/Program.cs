@@ -1,6 +1,7 @@
 using MangoFaaS.Common;
 using MangoFaaS.Common.Helpers;
 using MangoFaaS.Models.Helpers;
+using MangoFaaS.Models;
 using MangoFaaS.Secrets.Dto;
 using MangoFaaS.Secrets.Models;
 using Microsoft.EntityFrameworkCore;

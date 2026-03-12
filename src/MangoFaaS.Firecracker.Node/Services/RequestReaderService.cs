@@ -16,7 +16,8 @@ public class RequestReaderService(
     IFirecrackerProcessPool pool,
     Instrumentation instrumentation,
     IImageDownloadService imageDownloadService,
-    PendingRequestStore pendingRequestStore)
+    PendingRequestStore pendingRequestStore,
+    KafkaRpcClient<FunctionSecretsRequest, FunctionSecretsResponse> secretsRpcClient)
 {
     public async Task<InvocationResponse> HandleRequestAsync(Invocation httpRequest, RpcContext ctx, CancellationToken ct)
     {
@@ -39,6 +40,16 @@ public class RequestReaderService(
             {
                 await ConfigureDiskAsync(client, httpRequest, lease, ct);
                 activity?.AddEvent(new ActivityEvent("Disk Set."));
+
+                var secrets = await secretsRpcClient.SendAsync(
+                    "secrets.requests",
+                    httpRequest.FunctionId,
+                    new FunctionSecretsRequest { FunctionId = Guid.Parse(httpRequest.FunctionId) },
+                    ct);
+                activity?.AddEvent(new ActivityEvent("Secrets Retrieved."));
+                
+                // TODO: MMDS configuration
+                
                 await StartVm(client, ct);
                 activity?.AddEvent(new ActivityEvent("VM Started."));
             }
