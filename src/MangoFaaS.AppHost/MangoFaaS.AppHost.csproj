@@ -20,6 +20,7 @@
       <ProjectReference Include="..\MangoFaaS.Firecracker.Node\MangoFaaS.Firecracker.Node.csproj" />
       <ProjectReference Include="..\MangoFaaS.Gateway\MangoFaaS.Gateway.csproj" IsAspireProjectResource="true" />
       <ProjectReference Include="..\MangoFaaS.Functions\MangoFaaS.Functions.csproj" IsAspireProjectResource="true" />
+      <ProjectReference Include="..\MangoFaaS.Secrets\MangoFaaS.Secrets.csproj" />
     </ItemGroup>
 
 </Project>

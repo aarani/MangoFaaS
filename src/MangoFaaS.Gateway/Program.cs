@@ -1,6 +1,3 @@
-using System.Text;
-using Aspire.Confluent.Kafka;
-using Confluent.Kafka;
 using MangoFaaS.Common.Helpers;
 using MangoFaaS.Gateway.Enrichers;
 using MangoFaaS.Gateway.Models;
@@ -13,37 +10,21 @@ namespace MangoFaaS.Gateway;
 
 public static class Program
 {
-    public static readonly string ReplyToTopic = $"rpc.replies.{Guid.NewGuid():N}";
-
     public static async Task Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
 
         await KafkaHelpers.CreateTopicAsync(builder, "kafka", "requests", numPartitions: 3, replicationFactor: 1);
-        await KafkaHelpers.CreateTopicAsync(builder, "kafka", ReplyToTopic, numPartitions: 1, replicationFactor: 1);
 
         builder.AddServiceDefaults();
 
-        builder.AddKafkaProducer<string, Invocation>("kafka", consumerBuilder =>
-        {
-            consumerBuilder.SetValueSerializer(new ProtobufSerializer<Invocation>());
-        });
-
-        builder.AddKafkaConsumer<string, InvocationResponse>("kafka", (KafkaConsumerSettings settings) =>
-        {
-            settings.Config.GroupId = "gateway";
-            settings.Config.EnableAutoCommit = true;
-            settings.Config.AutoOffsetReset = AutoOffsetReset.Latest;
-        }, consumerBuilder =>
-        {
-            consumerBuilder.SetValueDeserializer(new ProtobufDeserializer<InvocationResponse>());
-        });
+        builder.AddKafkaRpcClient<Invocation, InvocationResponse>(
+            "kafka",
+            p => p.SetValueSerializer(new ProtobufSerializer<Invocation>()),
+            c => c.SetValueDeserializer(new ProtobufDeserializer<InvocationResponse>()),
+            consumerGroupId: "gateway");
 
         builder.Services.AddMemoryCache();
-
-        
-        builder.Services.AddSingleton<ResponseReaderService>();
-        builder.Services.AddHostedService(sp => sp.GetRequiredService<ResponseReaderService>());
 
         builder.Services.AddDbContext<MangoGatewayDbContext>(options =>
             options.UseNpgsql(builder.Configuration.GetConnectionString("gatewaydb")
@@ -73,8 +54,8 @@ public static class Program
             options.ForwardedHeaders =
                 ForwardedHeaders.XForwardedHost;
         });
-        
-        
+
+
         builder.Services.AddControllers();
 
         var app = builder.Build();
@@ -107,24 +88,14 @@ public static class Program
     }
 
     private static async Task HandleRequest(HttpContext context,
-        IProducer<string, Invocation> producer,
-        ResponseReaderService responseReaderService,
+        KafkaRpcClient<Invocation, InvocationResponse> rpcClient,
         IEnumerable<IEnricher> enrichers)
     {
-        var correlationId = Guid.NewGuid().ToString("N");
-
-        var headers = new Headers
-        {
-            new Header("correlationId", Encoding.UTF8.GetBytes(correlationId)),
-            new Header("replyTo", Encoding.UTF8.GetBytes(ReplyToTopic))
-        };
-
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         cts.CancelAfter(TimeSpan.FromMinutes(1));
         using var bodyReader = new StreamReader(context.Request.Body);
         var invocation = new Invocation
         {
-            CorrelationId = correlationId,
             HttpRequest = new HttpRequestTrigger
             {
                 Method = context.Request.Method,
@@ -154,19 +125,13 @@ public static class Program
             return;
         }
 
-        await producer.ProduceAsync("requests", new Message<string, Invocation>
-        {
-            Key = $"{invocation.FunctionId}:{invocation.FunctionVersion}",
-            Value = invocation,
-            Headers = headers
-        }, cts.Token);
+        var result = await rpcClient.SendAsync(
+            "requests",
+            $"{invocation.FunctionId}:{invocation.FunctionVersion}",
+            invocation,
+            cts.Token,
+            timeout: TimeSpan.FromMinutes(1));
 
-        var tcs = new TaskCompletionSource<InvocationResponse>();
-        // Add the request to the pending requests dictionary and remove it when the token is cancelled
-        responseReaderService.AddRequest(correlationId, tcs);
-        cts.Token.Register(() => responseReaderService.RemoveRequest(correlationId));
-
-        var result = await tcs.Task.WaitAsync(cts.Token);
         if (result.HttpResponse is null)
         {
             context.Response.StatusCode = 500;

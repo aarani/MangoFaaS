@@ -1,5 +1,6 @@
 const FUNCTIONS_URL = import.meta.env.VITE_FUNCTIONS_URL as string
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL as string
+const SECRETS_URL = import.meta.env.VITE_SECRETS_URL as string
 
 async function apiFetch<T>(
   url: string,
@@ -132,6 +133,77 @@ export const functionsApi = {
       body: file,
       headers: { "Content-Type": "application/octet-stream" },
     })
+  },
+}
+
+export interface SecretItem {
+  id: string
+  name: string
+  description: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SecretValue extends SecretItem {
+  value: string
+}
+
+export interface FunctionSecretBinding {
+  id: string
+  functionId: string
+  secretId: string
+  secretName: string
+}
+
+export const secretsApi = {
+  getSecrets(token: string) {
+    return apiFetch<SecretItem[]>(`${SECRETS_URL}/api/secrets`, {}, token)
+  },
+  getSecret(token: string, id: string) {
+    return apiFetch<SecretValue>(`${SECRETS_URL}/api/secrets/${id}`, {}, token)
+  },
+  createSecret(
+    token: string,
+    payload: { name: string; value: string; description?: string },
+  ) {
+    return apiFetch<SecretItem>(`${SECRETS_URL}/api/secrets`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }, token)
+  },
+  updateSecret(
+    token: string,
+    id: string,
+    payload: { value?: string; description?: string },
+  ) {
+    return apiFetch<SecretItem>(`${SECRETS_URL}/api/secrets/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }, token)
+  },
+  deleteSecret(token: string, id: string) {
+    return apiFetch<unknown>(`${SECRETS_URL}/api/secrets/${id}`, {
+      method: "DELETE",
+    }, token)
+  },
+  getFunctionSecrets(token: string, functionId: string) {
+    return apiFetch<FunctionSecretBinding[]>(
+      `${SECRETS_URL}/api/functions/${functionId}/secrets`, {}, token,
+    )
+  },
+  addSecretToFunction(token: string, functionId: string, secretId: string) {
+    return apiFetch<FunctionSecretBinding>(
+      `${SECRETS_URL}/api/functions/${functionId}/secrets/${secretId}`,
+      { method: "PUT" },
+      token,
+    )
+  },
+  removeSecretFromFunction(token: string, functionId: string, secretId: string) {
+    return apiFetch<unknown>(
+      `${SECRETS_URL}/api/functions/${functionId}/secrets/${secretId}`,
+      { method: "DELETE" },
+      token,
+    )
   },
 }
 

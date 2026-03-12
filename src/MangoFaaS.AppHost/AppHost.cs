@@ -24,6 +24,7 @@ var minio =
 
 var gatewaydb = postgres.AddDatabase("gatewaydb");
 var functionsdb = postgres.AddDatabase("functionsdb");
+var secretsdb = postgres.AddDatabase("secretsdb");
 
 var gateway =
     builder.AddProject<Projects.MangoFaaS_Gateway>("MangoFaaS-Gateway")
@@ -51,14 +52,26 @@ var functions =
     .WaitFor(functionsdb)
     .WaitFor(minio);
 
+var secrets =
+    builder.AddProject<Projects.MangoFaaS_Secrets>("MangoFaaS-Secrets")
+        .WithReference(kafka)
+        .WithReference(secretsdb)
+        .WithReference(minio)
+        .WithReference(keycloak)
+        .WaitFor(keycloak)
+        .WaitFor(kafka)
+        .WaitFor(secretsdb)
+        .WaitFor(minio);
 
 builder.AddJavaScriptApp("frontend", "../MangoFaaS.Frontend", "dev")
     .WithHttpEndpoint(port: 5173, env: "PORT")
     .WithEnvironment("VITE_FUNCTIONS_URL", functions.GetEndpoint("http"))
     .WithEnvironment("VITE_GATEWAY_URL", gateway.GetEndpoint("http"))
     .WithEnvironment("VITE_KEYCLOAK_URL", keycloak.GetEndpoint("https"))
+    .WithEnvironment("VITE_SECRETS_URL", secrets.GetEndpoint("http"))
     .WaitFor(keycloak)
     .WaitFor(functions)
-    .WaitFor(gateway);
+    .WaitFor(gateway)
+    .WaitFor(secrets);
 
 builder.Build().Run();

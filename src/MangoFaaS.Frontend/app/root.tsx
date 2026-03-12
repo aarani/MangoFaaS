@@ -51,6 +51,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 const NAV_ITEMS = [
   { to: "/functions", label: "Functions" },
   { to: "/routes", label: "Routes" },
+  { to: "/secrets", label: "Secrets" },
 ]
 
 const ADMIN_NAV_ITEMS = [
