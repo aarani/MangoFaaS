@@ -43,10 +43,10 @@ public class KafkaRpcClient<TRequest, TResponse>(
         string topic,
         string key,
         TRequest request,
+        string correlationId,
         CancellationToken cancellationToken = default,
         TimeSpan? timeout = null)
     {
-        var correlationId = Guid.NewGuid().ToString("N");
         var tcs = new TaskCompletionSource<TResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[correlationId] = tcs;
 

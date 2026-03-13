@@ -214,14 +214,14 @@ public sealed class FirecrackerProcessPool(
             await Task.Delay(50, cancellationToken).ConfigureAwait(false);
         }
 
+        var networkEntry = await networkSetup.SetupFirecrackerNetwork(p.Id, cancellationToken);
+        
         var handle = new FirecrackerProcessHandle
         {
             Id = id,
             Process = p,
             ApiSocketPath = apiSock,
-            LogSocketPath = logsPipePath,
-            LogsPipe = logsPipe,
-            NetworkEntry = await networkSetup.SetupFirecrackerNetwork(p.Id, cancellationToken),
+            NetworkEntry = networkEntry,
             KestrelEntry = null!,
             LastUsed = DateTimeOffset.UtcNow,
             InUse = false,
@@ -230,21 +230,17 @@ public sealed class FirecrackerProcessPool(
 
         var client = handle.CreateClient();
 
-        await client.Serial.PutAsync(new SerialDevice
-        {
-            SerialOutPath = logsPipePath
-        }, cancellationToken: cancellationToken);
-
-        var logReaderCts = new CancellationTokenSource();
-        handle.LogReaderCts = logReaderCts;
-        _ = ReadSerialOutputAsync(handle, logReaderCts.Token);
-
         await client.NetworkInterfaces["net1"].PutAsync(new NetworkInterface
         {
             IfaceId = "net1",
             HostDevName = handle.NetworkEntry.TapDevice
         }, cancellationToken: cancellationToken);
 
+        await client.Mmds.Config.PutAsync(new MmdsConfig()
+        {
+            NetworkInterfaces = ["net1"]
+        }, cancellationToken: cancellationToken);
+        
         var udsPath = Path.Combine(workDir, $"v-{id}.sock");
 
         await client.Vsock.PutAsync(new Vsock { GuestCid = 3, UdsPath = $"./v-{id}.sock" }, cancellationToken: cancellationToken);
@@ -255,32 +251,6 @@ public sealed class FirecrackerProcessPool(
         _all[handle.Id] = handle;
         logger.LogInformation("Started firecracker process {Id} (PID {Pid}) with API socket {Sock}", handle.Id, p.Id, apiSock);
         return handle;
-    }
-
-    private async Task ReadSerialOutputAsync(FirecrackerProcessHandle handle, CancellationToken ct)
-    {
-        try
-        {
-            await handle.LogsPipe.WaitForConnectionAsync(ct);
-            var buffer = ArrayPool<byte>.Shared.Rent(4096);
-            try
-            {
-                while (!ct.IsCancellationRequested)
-                {
-                    var read = await handle.LogsPipe.ReadAsync(buffer, ct);
-                    if (read == 0) break;
-                    var dest = handle.SerialOutputStream;
-                    if (dest != null)
-                        await dest.WriteAsync(buffer.AsMemory(0, read), ct);
-                }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception) { /* pipe broken or VM killed */ }
     }
 
     private async Task RemoveHandle(FirecrackerProcessHandle handle)
@@ -306,9 +276,7 @@ public sealed class FirecrackerProcessPool(
             try { handle.LogReaderCts?.Cancel(); } catch { /* ignored */ }
             try { await handle.KestrelEntry.Server.StopAsync(CancellationToken.None); } catch { /* ignored */ }
             try { await networkSetup.DestroyFirecrackerNetwork(handle.NetworkEntry); } catch { /* ignored */ }
-            try { await handle.LogsPipe.DisposeAsync(); } catch { /* ignored */ }
             try { File.Delete(handle.ApiSocketPath); } catch { /* ignored */ }
-            try { File.Delete(handle.LogSocketPath); } catch { /* ignored */ }
             try { handle.Process.Dispose(); } catch { /* ignore */ }
             foreach (var d in handle.Disposables)
             {

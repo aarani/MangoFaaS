@@ -45,10 +45,12 @@ public class RequestReaderService(
                     "secrets.requests",
                     httpRequest.FunctionId,
                     new FunctionSecretsRequest { FunctionId = Guid.Parse(httpRequest.FunctionId) },
-                    ct);
+                    Guid.NewGuid().ToString("N"),
+                    ct
+                );
                 activity?.AddEvent(new ActivityEvent("Secrets Retrieved."));
                 
-                // TODO: MMDS configuration
+                // TODO: mmds
                 
                 await StartVm(client, ct);
                 activity?.AddEvent(new ActivityEvent("VM Started."));

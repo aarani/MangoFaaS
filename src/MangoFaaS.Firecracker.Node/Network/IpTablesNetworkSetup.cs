@@ -13,7 +13,7 @@ public class IpTablesNetworkSetup : INetworkSetup
     private readonly IIpPoolManager _ipPoolManager;
     private readonly FirecrackerNetworkOptions _options;
 
-    private readonly SemaphoreSlim poolSearchLock = new(1, 1);
+    private readonly SemaphoreSlim _poolSearchLock = new(1, 1);
 
     public IpTablesNetworkSetup(ILogger<IpTablesNetworkSetup> logger, ProcessExecutionService executionService, IIpPoolManager ipPoolManager, IOptions<FirecrackerNetworkOptions> options)
     {
@@ -49,7 +49,7 @@ public class IpTablesNetworkSetup : INetworkSetup
         IPAddress guestIp;
         string freePool;
 
-        await poolSearchLock.WaitAsync(cancellationToken);
+        await _poolSearchLock.WaitAsync(cancellationToken);
         try
         {
             freePool = _ipPoolManager.FindAvailablePool(minFree: 2)
@@ -59,7 +59,7 @@ public class IpTablesNetworkSetup : INetworkSetup
         }
         finally
         {
-            poolSearchLock.Release();
+            _poolSearchLock.Release();
         }
        
         var tapId = $"tap{processId}-{RandomNumberGenerator.GetInt32(1000)}";

@@ -14,8 +14,6 @@ internal sealed class FirecrackerProcessHandle
     public required string Id { get; init; }
     public required Process Process { get; init; }
     public required string ApiSocketPath { get; init; }
-    public required string LogSocketPath { get; init; }
-    public required NamedPipeServerStream LogsPipe { get; init; }
     public DateTimeOffset LastUsed { get; set; } = DateTimeOffset.UtcNow;
     public string LastFunctionHash { get; set; } = string.Empty;
     public NetworkSetupEntry NetworkEntry { get; internal set; }

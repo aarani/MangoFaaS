@@ -96,6 +96,7 @@ public static class Program
         using var bodyReader = new StreamReader(context.Request.Body);
         var invocation = new Invocation
         {
+            CorrelationId = Guid.NewGuid().ToString("N"),
             HttpRequest = new HttpRequestTrigger
             {
                 Method = context.Request.Method,
@@ -129,6 +130,7 @@ public static class Program
             "requests",
             $"{invocation.FunctionId}:{invocation.FunctionVersion}",
             invocation,
+            invocation.CorrelationId,
             cts.Token,
             timeout: TimeSpan.FromMinutes(1));
 
