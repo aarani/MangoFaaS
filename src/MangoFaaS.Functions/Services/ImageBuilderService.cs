@@ -1,6 +1,3 @@
-
-using System.Diagnostics;
-using System.Formats.Tar;
 using System.IO.Compression;
 using MangoFaaS.Common.Services;
 using MangoFaaS.Functions.Models;

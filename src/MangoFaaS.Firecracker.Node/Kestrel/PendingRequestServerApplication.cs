@@ -1,7 +1,4 @@
-using System.Buffers;
-using System.Text.Json;
 using Google.Protobuf;
-using MangoFaaS.Firecracker.Node.Services;
 using MangoFaaS.Firecracker.Node.Store;
 using MangoFaaS.Models;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -25,12 +22,11 @@ public class PendingRequestServerApplication(string functionIdWithVersion, Pendi
     {
         if (context.Request.Path == "/next")
         {
-            var (Request, _) = await pendingRequestStore.DequeueAsync(functionIdWithVersion, context.RequestAborted);
+            var (request, _) = await pendingRequestStore.DequeueAsync(functionIdWithVersion, context.RequestAborted);
             context.Response.StatusCode = 200;
             context.Response.ContentType = "application/protobuf";
-            if (Request is null) return;
             using var memStream = new MemoryStream();
-            Request.WriteTo(memStream);
+            request.WriteTo(memStream);
             await context.Response.Body.WriteAsync(memStream.ToArray());
         }
         else if (context.Request.Path.StartsWithSegments("/response"))

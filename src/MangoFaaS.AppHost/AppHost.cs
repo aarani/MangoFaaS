@@ -1,11 +1,10 @@
-using System.Security.Cryptography;
-using Aspire.Hosting;
-
-using var rsa = new RSACryptoServiceProvider(1024);
-var privateKeyPem = rsa.ExportRSAPrivateKeyPem();
-var publicKeyPem = rsa.ExportRSAPublicKeyPem();
-
 var builder = DistributedApplication.CreateBuilder(args);
+
+var keycloak =
+    builder.AddKeycloak("keycloak", 8080)
+        .WithRealmImport("Assets/realm-export.json")
+        .WithDataVolume("keycloak")
+        .WithOtlpExporter();
 
 var kafka =
     builder
@@ -25,11 +24,14 @@ var minio =
 
 var gatewaydb = postgres.AddDatabase("gatewaydb");
 var functionsdb = postgres.AddDatabase("functionsdb");
-var authdb = postgres.AddDatabase("authdb");
+var secretsdb = postgres.AddDatabase("secretsdb");
 
-builder.AddProject<Projects.MangoFaaS_Gateway>("MangoFaaS-Gateway")
+var gateway =
+    builder.AddProject<Projects.MangoFaaS_Gateway>("MangoFaaS-Gateway")
     .WithReference(kafka)
     .WithReference(gatewaydb)
+    .WithReference(keycloak)
+    .WaitFor(keycloak)
     .WaitFor(kafka)
     .WaitFor(gatewaydb);
 
@@ -39,18 +41,37 @@ builder.AddProject<Projects.MangoFaaS_Firecracker_Node>("MangoFaaS-Firecracker-N
     .WaitFor(kafka)
     .WaitFor(minio);
 
-builder.AddProject<Projects.MangoFaaS_Functions>("MangoFaaS-Functions")
+var functions =
+    builder.AddProject<Projects.MangoFaaS_Functions>("MangoFaaS-Functions")
     .WithReference(kafka)
     .WithReference(functionsdb)
     .WithReference(minio)
-    .WithEnvironment("Jwt__PublicKeyPem", publicKeyPem)
-    .WaitFor(kafka) 
+    .WithReference(keycloak)
+    .WaitFor(keycloak)
+    .WaitFor(kafka)
     .WaitFor(functionsdb)
     .WaitFor(minio);
 
-builder.AddProject<Projects.MangoFaaS_Authorization>("MangoFaaS-Authorization")
-    .WithReference(authdb)
-    .WithEnvironment("Jwt__PrivateKeyPem", privateKeyPem)
-    .WaitFor(authdb);
+var secrets =
+    builder.AddProject<Projects.MangoFaaS_Secrets>("MangoFaaS-Secrets")
+        .WithReference(kafka)
+        .WithReference(secretsdb)
+        .WithReference(minio)
+        .WithReference(keycloak)
+        .WaitFor(keycloak)
+        .WaitFor(kafka)
+        .WaitFor(secretsdb)
+        .WaitFor(minio);
+
+builder.AddJavaScriptApp("frontend", "../MangoFaaS.Frontend", "dev")
+    .WithHttpEndpoint(port: 5173, env: "PORT")
+    .WithEnvironment("VITE_FUNCTIONS_URL", functions.GetEndpoint("http"))
+    .WithEnvironment("VITE_GATEWAY_URL", gateway.GetEndpoint("http"))
+    .WithEnvironment("VITE_KEYCLOAK_URL", keycloak.GetEndpoint("https"))
+    .WithEnvironment("VITE_SECRETS_URL", secrets.GetEndpoint("http"))
+    .WaitFor(keycloak)
+    .WaitFor(functions)
+    .WaitFor(gateway)
+    .WaitFor(secrets);
 
 builder.Build().Run();

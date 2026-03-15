@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Net;
+using System.IO.Pipes;
 using System.Net.Sockets;
 using MangoFaaS.Firecracker.API;
 using MangoFaaS.Firecracker.Node.Kestrel;
@@ -21,6 +21,15 @@ internal sealed class FirecrackerProcessHandle
     public required List<IDisposable> Disposables { get; internal set; }
 
     public volatile bool InUse;
+
+    private volatile Stream? _serialOutputStream;
+    public Stream? SerialOutputStream
+    {
+        get => _serialOutputStream;
+        set => _serialOutputStream = value;
+    }
+
+    internal CancellationTokenSource? LogReaderCts { get; set; }
 
     public FirecrackerClient CreateClient()
     {
@@ -51,11 +60,10 @@ internal sealed class FirecrackerProcessHandle
             BaseAddress = new Uri("http://localhost")
         };
 
-
         var authProvider = new AnonymousAuthenticationProvider();
         var adapter = new HttpClientRequestAdapter(authProvider, httpClient: httpClient);
         var client = new FirecrackerClient(adapter);
-
+        
         return client;
     }
 }

@@ -14,13 +14,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Firecracker.Node"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Functions", "src\MangoFaaS.Functions\MangoFaaS.Functions.csproj", "{6186D5E2-ECA5-4823-BBE8-0EBF0C33F1E4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Authorization", "src\MangoFaaS.Authorization\MangoFaaS.Authorization.csproj", "{FAEC5F7A-67AF-4922-840F-810A87823F38}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.IPAM", "src\MangoFaaS.IPAM\MangoFaaS.IPAM.csproj", "{755120E1-B9D7-4962-B66D-144E2819EA4D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.IPAM.Tests", "tests\MangoFaaS.IPAM.Tests\MangoFaaS.IPAM.Tests.csproj", "{F0E3E4F1-1234-4F6C-9A71-61A1C8E2A9AB}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Common", "src\MangoFaaS.Common\MangoFaaS.Common.csproj", "{95AC37FF-1001-4747-98C8-6BED84E3D90A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MangoFaaS.Secrets", "src\MangoFaaS.Secrets\MangoFaaS.Secrets.csproj", "{B6162B14-0592-4BD8-AF08-99737C72DC3D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -116,18 +116,18 @@ Global
 		{6186D5E2-ECA5-4823-BBE8-0EBF0C33F1E4}.Release|x64.Build.0 = Release|Any CPU
 		{6186D5E2-ECA5-4823-BBE8-0EBF0C33F1E4}.Release|x86.ActiveCfg = Release|Any CPU
 		{6186D5E2-ECA5-4823-BBE8-0EBF0C33F1E4}.Release|x86.Build.0 = Release|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Debug|x64.Build.0 = Debug|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Debug|x86.Build.0 = Debug|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Release|Any CPU.Build.0 = Release|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Release|x64.ActiveCfg = Release|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Release|x64.Build.0 = Release|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Release|x86.ActiveCfg = Release|Any CPU
-		{FAEC5F7A-67AF-4922-840F-810A87823F38}.Release|x86.Build.0 = Release|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Debug|x64.Build.0 = Debug|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Debug|x86.Build.0 = Debug|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Release|x64.ActiveCfg = Release|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Release|x64.Build.0 = Release|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Release|x86.ActiveCfg = Release|Any CPU
+		{B6162B14-0592-4BD8-AF08-99737C72DC3D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

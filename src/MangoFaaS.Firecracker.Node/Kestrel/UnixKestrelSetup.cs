@@ -1,7 +1,4 @@
-using System.Security.Cryptography;
-using MangoFaaS.Firecracker.Node.Services;
 using MangoFaaS.Firecracker.Node.Store;
-using MangoFaaS.Models;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets;
 using Microsoft.Extensions.Options;
@@ -15,10 +12,10 @@ public class UnixKestrelSetup (ILoggerFactory loggerFactory, PendingRequestStore
  
     public async Task<UnixKestrelEntry> StartListening(string socketPath, string functionIdWithVersion)
     {
-        var options = new OptionsWrapper<KestrelServerOptions>(new ());
+        var options = new OptionsWrapper<KestrelServerOptions>(new KestrelServerOptions());
         options.Value.ListenUnixSocket(socketPath + "_80");
 
-        var transportOptions = new OptionsWrapper<SocketTransportOptions>(new ());
+        var transportOptions = new OptionsWrapper<SocketTransportOptions>(new SocketTransportOptions());
 
         var transportFactory = new SocketTransportFactory(transportOptions, loggerFactory);
 

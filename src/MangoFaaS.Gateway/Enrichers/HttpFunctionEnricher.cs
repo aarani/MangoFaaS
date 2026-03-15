@@ -3,7 +3,6 @@ using MangoFaaS.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Route = MangoFaaS.Gateway.Models.Route;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace MangoFaaS.Gateway.Enrichers;
@@ -16,11 +15,6 @@ public class HttpFunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext d
 
         var request = invocation.HttpRequest;
 
-        // Remove query string for route matching
-        var requestPath = request.Path;
-        var qIndex = requestPath.IndexOf('?');
-        if (qIndex >= 0) requestPath = requestPath[..qIndex];
-        
         var cacheKey = $"routes_{request.Host}";
         if (!memCache.TryGetValue(cacheKey, out List<Route>? routes))
         {
@@ -33,31 +27,31 @@ public class HttpFunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext d
 
             memCache.Set(cacheKey, routes, cacheEntryOptions);
         }
-        
+
         if (routes is null || routes.Count == 0) return;
-        
+
         Route? winningRoute = null;
         int bestPriority = int.MinValue;
         int bestTieBreaker = int.MinValue; // prefer longer match when applicable
-        
+
         foreach (var route in routes)
         {
             if (string.IsNullOrWhiteSpace(route.FunctionId) || string.IsNullOrWhiteSpace(route.Data))
                 continue;
-            
-            var matchResult = Matches(route.Type, requestPath, route.Data);
+
+            var matchResult = Matches(route.Type, request.Path, route.Data);
             if (!matchResult.isMatch) continue;
-            
+
             // Early-exit: Exact match is the highest possible priority; no need to check further
             if (route.Type == Enums.RouteType.Exact)
             {
                 winningRoute = route;
                 break;
             }
-            
+
             var priority = matchResult.priority;
             var tieBreaker = matchResult.tieBreaker;
-            
+
             if (priority > bestPriority || (priority == bestPriority && tieBreaker > bestTieBreaker))
             {
                 bestPriority = priority;
@@ -65,14 +59,14 @@ public class HttpFunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext d
                 winningRoute = route;
             }
         }
-        
+
         if (winningRoute != null)
         {
             invocation.FunctionId = winningRoute.FunctionId;
             invocation.FunctionVersion = winningRoute.FunctionVersion;
         }
     }
-    
+
     private static (bool isMatch, int priority, int tieBreaker) Matches(Enums.RouteType type, string path, string pattern)
     {
         switch (type)
@@ -84,7 +78,7 @@ public class HttpFunctionEnricher(IMemoryCache memCache, MangoGatewayDbContext d
             case Enums.RouteType.Regex:
                 try
                 {
-                    var isMatch = Regex.IsMatch(path, pattern);
+                    var isMatch = Regex.IsMatch(path, pattern, RegexOptions.None, TimeSpan.FromMilliseconds(100));
                     return (isMatch, 1000, 0);
                 }
                 catch

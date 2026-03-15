@@ -2,6 +2,7 @@ using System.IO.Compression;
 using MangoFaaS.Functions.Dto;
 using MangoFaaS.Functions.Models;
 using MangoFaaS.Models.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Minio;
@@ -9,6 +10,7 @@ using Minio.DataModel.Args;
 
 namespace MangoFaaS.Functions.Controllers;
 
+[ApiController]
 [Route("api/[controller]")]
 public class RuntimesController(MangoFunctionsDbContext mangoFunctionsDbContext, IMinioClient minioClient) : ControllerBase
 {
@@ -17,6 +19,7 @@ public class RuntimesController(MangoFunctionsDbContext mangoFunctionsDbContext,
     private const string RawRuntimesBucketName = "raw-runtimes";
 
     [HttpGet]
+    [Authorize]
     public async Task<ActionResult<IEnumerable<Runtime>>> GetRuntimes()
     {
         var runtimes =
@@ -29,6 +32,7 @@ public class RuntimesController(MangoFunctionsDbContext mangoFunctionsDbContext,
     }
 
     [HttpPut]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult> CreateRuntime([FromBody] CreateRuntimeRequest request)
     {
         var runtimeId = Guid.NewGuid();
@@ -59,6 +63,7 @@ public class RuntimesController(MangoFunctionsDbContext mangoFunctionsDbContext,
     }
 
     [HttpPatch("{id}/activate")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult> ActivateRuntime(Guid id, [FromBody] ActivateRuntimeRequest request)
     {
         var runtime = await mangoFunctionsDbContext.Runtimes.FindAsync(id);
@@ -83,10 +88,10 @@ public class RuntimesController(MangoFunctionsDbContext mangoFunctionsDbContext,
         {
             var tempDeflatedPath = Path.GetTempFileName();
 
-            using (var deflatedFile = System.IO.File.OpenWrite(tempDeflatedPath))
-            using (DeflateStream compressor = new(deflatedFile, CompressionLevel.Fastest))
+            await using (var deflatedFile = System.IO.File.OpenWrite(tempDeflatedPath))
+            await using (DeflateStream compressor = new(deflatedFile, CompressionLevel.Fastest))
             {
-                using (var runtimeFile = System.IO.File.OpenRead(tempRawRuntimePath))
+                await using (var runtimeFile = System.IO.File.OpenRead(tempRawRuntimePath))
                 {
                     runtimeFile.Seek(0, SeekOrigin.Begin);
                     await runtimeFile.CopyToAsync(compressor);

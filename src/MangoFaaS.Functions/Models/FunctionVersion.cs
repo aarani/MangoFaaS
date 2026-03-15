@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using MangoFaaS.Models.Enums;
 
 namespace MangoFaaS.Functions.Models
@@ -27,6 +28,8 @@ namespace MangoFaaS.Functions.Models
         public FunctionState State { get; set; } = FunctionState.Created;
 
         public Guid FunctionId { get; set; }
+        
+        [JsonIgnore]
         public virtual Function Function { get; set; } = null!;
     }
 

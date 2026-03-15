@@ -1,8 +1,8 @@
 {
-  "descriptionHash": "4C5B45E7C91ABE7E7BBC283A14A8661950CC2356472E352A353FC386826F5AB015F5D85C6484CAB3F75080FF3937C70C7E35AF7943F60C92FE6CB97D275DEABF",
+  "descriptionHash": "30919C352711F970B5DD9068E04B891FBE8686E3B71688289B85F38F819A8CE0C77511A2DEE2E3D984D0F493E8A8A2CC3AF1F7F776012CC46F9EB4F61FD28791",
   "descriptionLocation": "firecracker.yaml",
   "lockFileVersion": "1.0.0",
-  "kiotaVersion": "1.28.0",
+  "kiotaVersion": "1.30.0",
   "clientClassName": "FirecrackerClient",
   "typeAccessModifier": "Public",
   "clientNamespaceName": "MangoFaaS.Firecracker.API",

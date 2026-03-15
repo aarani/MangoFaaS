@@ -1,4 +1,3 @@
-using Confluent.Kafka;
 using MangoFaaS.Common;
 using MangoFaaS.Common.Helpers;
 using MangoFaaS.Common.Services;
@@ -9,6 +8,7 @@ using MangoFaaS.Firecracker.Node.Services;
 using MangoFaaS.Firecracker.Node.Store;
 using MangoFaaS.Models;
 using MangoFaaS.Models.Helpers;
+using Confluent.Kafka;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -18,20 +18,19 @@ builder.AddMinioClient("minio");
 
 await KafkaHelpers.CreateTopicAsync(builder, "kafka", "requests", numPartitions: 3, replicationFactor: 1);
 
-builder.AddKafkaConsumer<string, Invocation>("kafka", settings  =>
-{
-    settings.Config.GroupId = "firecracker-node";
-    settings.Config.EnableAutoCommit = false;
-    settings.Config.AutoOffsetReset = AutoOffsetReset.Latest;
-}, consumerBuilder =>
-{
-    consumerBuilder.SetValueDeserializer(new ProtobufDeserializer<Invocation>());
-});
+builder.AddKafkaRpcClient<FunctionSecretsRequest, FunctionSecretsResponse>(
+    "kafka",
+    p => p.SetValueSerializer(new SystemTextJsonSerializer<FunctionSecretsRequest>()),
+    c => c.SetValueDeserializer(new SystemTextJsonDeserializer<FunctionSecretsResponse>()),
+    consumerGroupId: "firecracker-node-secrets");
 
-builder.AddKafkaProducer<string, InvocationResponse>("kafka", consumerBuilder =>
-{
-    consumerBuilder.SetValueSerializer(new ProtobufSerializer<InvocationResponse>());
-});
+builder.AddKafkaRpcServer<Invocation, InvocationResponse>(
+    "kafka",
+    "requests",
+    sp => sp.GetRequiredService<RequestReaderService>().HandleRequestAsync,
+    c => c.SetValueDeserializer(new ProtobufDeserializer<Invocation>()),
+    p => p.SetValueSerializer(new ProtobufSerializer<InvocationResponse>()),
+    consumerGroupId: "firecracker-node");
 
 // Configure Firecracker pool options from configuration
 builder.Services.Configure<FirecrackerPoolOptions>(builder.Configuration.GetSection("FirecrackerPool"));
@@ -52,7 +51,6 @@ builder.Services.AddSingleton<ProcessExecutionService>();
 
 builder.Services.AddSingleton<PendingRequestStore>();
 builder.Services.AddSingleton<RequestReaderService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<RequestReaderService>());
 
 builder.Services.AddIpPoolManager();
 builder.Services.AddSingleton<INetworkSetup, IpTablesNetworkSetup>();
